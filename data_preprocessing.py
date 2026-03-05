@@ -14,6 +14,7 @@ def preprocess_data(uploaded_file):
     text = _clean_text(text)
     return text
 
+
 def _extract_pdf(uploaded_file):
     """
     Tries normal text extraction first on every page.
@@ -48,7 +49,8 @@ def _extract_pdf(uploaded_file):
     # Reassemble in correct page order
     full_text = "\n".join(pages_text[i] for i in range(total_pages) if i in pages_text)
     return full_text
-  
+
+
 def _ocr_pages(file_bytes, page_indices, pages_text):
     """
     Converts specific pages to images and runs Tesseract OCR on them.
@@ -82,8 +84,36 @@ def _ocr_pages(file_bytes, page_indices, pages_text):
 
     return pages_text
 
-# function _clean_text 
+
+def _clean_text(text):
     """
-    define a function _clean_text that cleans raw extracted/OCR text to remove noise that would
+    Cleans raw extracted/OCR text to remove noise that would
     hurt chunking quality and retrieval accuracy.
     """
+
+    # Fix spaced-out characters from PDF column layouts
+    # e.g. "R e v e n u e" → "Revenue"
+    # Matches a letter, a single space, then another letter
+    text = re.sub(r'(?<=[a-zA-Z])\s(?=[a-zA-Z])', '', text)
+
+    # Remove standalone page numbers (a line containing only digits)
+    text = re.sub(r'^\s*\d+\s*$', '', text, flags=re.MULTILINE)
+
+    # Remove common 10-K boilerplate that repeats on every page
+    # These strings add noise to chunks without adding meaning
+    boilerplate = [
+        r'Table of Contents',
+        r'UNITED STATES SECURITIES AND EXCHANGE COMMISSION',
+        r'Form 10-K',
+        r'Annual Report Pursuant to Section \d+',
+    ]
+    for pattern in boilerplate:
+        text = re.sub(pattern, '', text, flags=re.IGNORECASE)
+
+    # Collapse multiple spaces/tabs into a single space
+    text = re.sub(r'[ \t]+', ' ', text)
+
+    # Collapse 3 or more newlines into 2 (preserve paragraph breaks, remove excess gaps)
+    text = re.sub(r'\n{3,}', '\n\n', text)
+
+    return text.strip()
