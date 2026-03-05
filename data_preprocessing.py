@@ -49,12 +49,38 @@ def _extract_pdf(uploaded_file):
     full_text = "\n".join(pages_text[i] for i in range(total_pages) if i in pages_text)
     return full_text
   
-# function _ocr_pages    
+def _ocr_pages(file_bytes, page_indices, pages_text):
     """
-    define a function _ocr_pages that converts specific pages to images and runs Tesseract OCR on them.
+    Converts specific pages to images and runs Tesseract OCR on them.
     Only called if scanned pages are detected — avoids importing
     heavy libraries (pdf2image, pytesseract) unless actually needed.
     """
+    try:
+        import pytesseract
+        from pdf2image import convert_from_bytes
+    except ImportError:
+        print(
+            "WARNING: pytesseract or pdf2image not installed. "
+            "Skipping OCR for scanned pages. "
+            "Run: pip install pytesseract pdf2image"
+        )
+        return pages_text
+
+    # Convert only the scanned pages to images (1-indexed for pdf2image)
+    # first_page and last_page args don't support non-contiguous pages,
+    # so we convert all and select by index
+    print(f"Running OCR on {len(page_indices)} scanned page(s): {page_indices}")
+    images = convert_from_bytes(file_bytes, dpi=300)  # 300 DPI = good OCR accuracy
+
+    for i in page_indices:
+        if i < len(images):
+            ocr_text = pytesseract.image_to_string(images[i], lang='eng')
+            if ocr_text.strip():
+                pages_text[i] = ocr_text
+            else:
+                print(f"WARNING: OCR returned no text for page {i + 1} — page may be blank or image-only.")
+
+    return pages_text
 
 # function _clean_text 
     """
