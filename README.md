@@ -89,4 +89,4 @@ For more details, see the `test.ipynb` notebook.
 
 ## Contributors
 - **Aditya Singh**: Architecture Design and Model Development.
-- **Dheeraj Yadav**: UI/UX, Deployment, Monitoring and Cloud Integration.
+- **Dheeraj Yadav**: Integration, UI/UX and Deployment
