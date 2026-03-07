@@ -91,9 +91,13 @@ class ParagraphAwareChunker:
         return [p.strip() for p in re.split(r'\n{2,}', text) if p.strip()]
 
 
-  # TASK_2: define a function _flush_merge_buffer
     # Join buffered paragraphs into one segment, append to segments, and clear the buffer.
     # Returns 0 so the caller can reset merge_len in a single assignment
+    def _flush_merge_buffer(self, merge_buffer: list[str], segments: list[str]) -> int:
+        if merge_buffer:
+            segments.append("\n\n".join(merge_buffer))
+            merge_buffer.clear()
+        return 0
 
 
   # TASK_3: define a function _split_large_paragraph
