@@ -100,10 +100,26 @@ class ParagraphAwareChunker:
         return 0
 
 
-  # TASK_3: define a function _split_large_paragraph
     # Split an oversized paragraph into sentence-grouped sub-chunks with sentence overlap.
     # If a single sentence exceeds max_chars, keep it intact rather than splitting mid-sentence.
+    def _split_large_paragraph(self, para: str) -> list[str]:
+        sentences = self._sent_tokenize(para)
+        sub_chunks: list[str] = []
+        current: list[str] = []
+        current_len: int = 0
 
+        for sent in sentences:
+            sent_len = len(sent)
+            if current and current_len + sent_len > self.max_chars:
+                sub_chunks.append(" ".join(current))
+                current = current[-self.overlap_sentences:] if self.overlap_sentences else []
+                current_len = sum(len(s) for s in current)
+            current.append(sent)
+            current_len += sent_len
+
+        if current:
+            sub_chunks.append(" ".join(current))
+        return sub_chunks
 
   # TASK_4: define a function _build_chunks
     # Wrap raw text segments into Chunk objects with char offsets and section labels.
