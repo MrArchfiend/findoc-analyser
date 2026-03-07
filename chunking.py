@@ -121,9 +121,27 @@ class ParagraphAwareChunker:
             sub_chunks.append(" ".join(current))
         return sub_chunks
 
-  # TASK_4: define a function _build_chunks
-    # Wrap raw text segments into Chunk objects with char offsets and section labels.
 
+    # Wrap raw text segments into Chunk objects with char offsets and section labels.
+    def _build_chunks(self, segments: list[str]) -> list[Chunk]:
+        chunks: list[Chunk] = []
+        char_cursor: int = 0
+
+        for idx, seg in enumerate(segments):
+            seg = seg.strip()
+            if not seg:
+                continue
+            chunks.append(Chunk(
+                text=seg,
+                chunk_index=idx,
+                method="paragraph-aware",
+                char_start=char_cursor,
+                char_end=char_cursor + len(seg),
+                section_hint=self._detect_section(seg),
+            ))
+            char_cursor += len(seg)
+
+        return chunks
 
   # TASK_5: define a function _detect_section
     # Scan the first 300 chars of text against _SECTION_PATTERNS and return the first match.
