@@ -144,8 +144,60 @@ class VectorStore:
     # Retrieval
     # ------------------------------------------------------------------
 
-    def query:
-        raise NotImplementedError
+    def query(
+        self,
+        query_text: str,
+        top_k: int = TOP_K_RESULTS,
+        doc_name: Optional[str] = None,
+        section_hint: Optional[str] = None,
+    ) -> list[RetrievedChunk]:
+        """
+        Retrieve the most relevant chunks for a natural-language query.
+
+        Args:
+            query_text:   The user question or sub-question.
+            top_k:        Maximum number of results to return.
+            doc_name:     If set, restrict search to a single document.
+            section_hint: If set, restrict search to a specific 10-K section
+                          (e.g. "Risk Factors", "MD&A").
+
+        Returns:
+            List of RetrievedChunk objects sorted by relevance (best first).
+        """
+        where: dict = {}
+        if doc_name:
+            where["doc_name"] = doc_name
+        if section_hint:
+            where["section_hint"] = section_hint
+
+        query_kwargs: dict = dict(
+            query_texts=[query_text],
+            n_results=min(top_k, self._collection.count() or 1),
+            include=["documents", "metadatas", "distances"],
+        )
+        if where:
+            query_kwargs["where"] = where
+
+        results = self._collection.query(**query_kwargs)
+
+        retrieved: list[RetrievedChunk] = []
+        for doc, meta, dist in zip(
+            results["documents"][0],
+            results["metadatas"][0],
+            results["distances"][0],
+        ):
+            retrieved.append(RetrievedChunk(
+                text=doc,
+                score=1.0 - dist,          # cosine distance → similarity
+                doc_name=meta.get("doc_name", ""),
+                chunk_index=int(meta.get("chunk_index", -1)),
+                section_hint=meta.get("section_hint") or None,
+                char_start=int(meta.get("char_start", 0)),
+                char_end=int(meta.get("char_end", 0)),
+            ))
+
+        logger.debug("Query returned %d chunks for: %r", len(retrieved), query_text)
+        return retrieved
 
     def batch_query:
         raise NotImplementedError
