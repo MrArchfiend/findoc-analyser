@@ -86,8 +86,9 @@ class ParagraphAwareChunker:
         return self._build_chunks(segments)
 
 
-  # TASK_1: define a function _parse_paragraphs
     # Split document text on \n\n boundaries into a list of clean paragraph strings.
+    def _parse_paragraphs(self, text: str) -> list[str]:
+        return [p.strip() for p in re.split(r'\n{2,}', text) if p.strip()]
 
 
   # TASK_2: define a function _flush_merge_buffer
