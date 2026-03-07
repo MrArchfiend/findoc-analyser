@@ -66,6 +66,34 @@ def _make_embedding_fn(backend: str = EMBEDDING_BACKEND):
 # Core storage & retrieval class
 # ---------------------------------------------------------------------------
 class VectorStore:
+    """
+    Thin wrapper around a ChromaDB collection that handles:
+      - Persisting chunk embeddings to disk
+      - Upserting chunks (idempotent — safe to re-index the same document)
+      - Similarity search with optional metadata filters
+      - Listing and deleting indexed documents
+    """
+
+    def __init__(
+        self,
+        persist_dir: str = CHROMA_PERSIST_DIR,
+        collection_name: str = CHROMA_COLLECTION_NAME,
+        embedding_backend: str = EMBEDDING_BACKEND,
+    ) -> None:
+        self._client = chromadb.PersistentClient(
+            path=persist_dir,
+            settings=Settings(anonymized_telemetry=False),
+        )
+        self._embed_fn = _make_embedding_fn(embedding_backend)
+        self._collection = self._client.get_or_create_collection(
+            name=collection_name,
+            embedding_function=self._embed_fn,
+            metadata={"hnsw:space": "cosine"},   # cosine similarity
+        )
+        logger.info(
+            "VectorStore ready — collection=%r  backend=%r  persist_dir=%r",
+            collection_name, embedding_backend, persist_dir,
+        )
     
 
     # ------------------------------------------------------------------
