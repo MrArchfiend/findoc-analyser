@@ -199,8 +199,34 @@ class VectorStore:
         logger.debug("Query returned %d chunks for: %r", len(retrieved), query_text)
         return retrieved
 
-    def batch_query:
-        raise NotImplementedError
+    def batch_query(
+        self,
+        queries: list[str],
+        top_k: int = TOP_K_RESULTS,
+        doc_name: Optional[str] = None,
+        section_hint: Optional[str] = None,
+        deduplicate: bool = True,
+    ) -> list[RetrievedChunk]:
+        """
+        Run multiple sub-questions and merge results, optionally deduplicating
+        by chunk_index so the same passage isn't fed to the LLM twice.
+
+        Intended for use with the sub-question generator in question_generation.py.
+        """
+        seen_ids: set[str] = set()
+        merged: list[RetrievedChunk] = []
+
+        for q in queries:
+            for rc in self.query(q, top_k=top_k, doc_name=doc_name, section_hint=section_hint):
+                uid = f"{rc.doc_name}::{rc.chunk_index}"
+                if deduplicate and uid in seen_ids:
+                    continue
+                seen_ids.add(uid)
+                merged.append(rc)
+
+        # Re-sort by score descending across all sub-questions.
+        merged.sort(key=lambda r: r.score, reverse=True)
+        return merged[:top_k]
 
     # ------------------------------------------------------------------
     # Document management
