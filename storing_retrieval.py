@@ -101,7 +101,44 @@ class VectorStore:
     # ------------------------------------------------------------------
 
     def add_chunks(self, chunks: list[Chunk], doc_name: str) -> int:
-        raise NotImplementedError
+        """
+        Upsert a list of Chunk objects into the vector store.
+
+        Args:
+            chunks:   Output of ParagraphAwareChunker.chunk() (or any chunker).
+            doc_name: Logical document name used to namespace chunk IDs
+                      (typically the uploaded filename).
+
+        Returns:
+            Number of chunks upserted.
+        """
+        if not chunks:
+            logger.warning("add_chunks called with empty list — nothing stored.")
+            return 0
+
+        ids, documents, metadatas = [], [], []
+
+        for chunk in chunks:
+            ids.append(_chunk_id(chunk, doc_name))
+            documents.append(chunk.text)
+            metadatas.append({
+                "doc_name":     doc_name,
+                "chunk_index":  chunk.chunk_index,
+                "method":       chunk.method,
+                "char_start":   chunk.char_start,
+                "char_end":     chunk.char_end,
+                "section_hint": chunk.section_hint or "",
+                # Flatten any caller-supplied extras (must be str/int/float/bool).
+                **{k: str(v) for k, v in chunk.extra.items()},
+            })
+
+        self._collection.upsert(
+            ids=ids,
+            documents=documents,
+            metadatas=metadatas,
+        )
+        logger.info("Upserted %d chunks for document %r.", len(chunks), doc_name)
+        return len(chunks)
 
     # ------------------------------------------------------------------
     # Retrieval
