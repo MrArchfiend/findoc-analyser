@@ -237,3 +237,26 @@ class VectorStore:
 # ---------------------------------------------------------------------------
 # Lightweight result dataclass returned by query methods
 # ---------------------------------------------------------------------------
+from dataclasses import dataclass   # noqa: E402  (after constants to avoid circular)
+
+
+@dataclass
+class RetrievedChunk:
+    """A chunk returned from similarity search, enriched with its relevance score."""
+    text: str
+    score: float            # cosine similarity in [0, 1]; higher = more relevant
+    doc_name: str
+    chunk_index: int
+    section_hint: Optional[str]
+    char_start: int
+    char_end: int
+
+    def __repr__(self) -> str:
+        preview = self.text[:60].replace("\n", " ")
+        return (
+            f"RetrievedChunk(score={self.score:.3f}, "
+            f"doc={self.doc_name!r}, "
+            f"section={self.section_hint!r}, "
+            f"preview={preview!r})"
+        )
+
