@@ -143,6 +143,11 @@ class ParagraphAwareChunker:
 
         return chunks
 
-  # TASK_5: define a function _detect_section
+
     # Scan the first 300 chars of text against _SECTION_PATTERNS and return the first match.
-  
+    def _detect_section(self, text: str) -> Optional[str]:
+        sample = text[:300]
+        for pattern, name in _SECTION_PATTERNS:
+            if pattern.search(sample):
+                return name
+        return None  
