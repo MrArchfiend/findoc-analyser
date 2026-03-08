@@ -1,8 +1,8 @@
 import json
-import requests
+from groq import Groq
+from constants import GROQ_API_KEY, GROQ_MODEL
 
-OLLAMA_BASE_URL = "http://localhost:11434"
-OLLAMA_LLM_MODEL = "llama3"
+client = Groq(api_key=GROQ_API_KEY)
 
 
 def generate_subquestions(query: str) -> list[str]:
@@ -12,31 +12,20 @@ def generate_subquestions(query: str) -> list[str]:
     """
     prompt = f"""
 You are a financial analyst assistant.
-
 A user asked: "{query}"
-
 Break this into 3 specific sub-questions to help retrieve relevant information from a 10-K financial document.
-
 Return ONLY a JSON object like this: {{"questions": ["q1", "q2", "q3"]}}
 """
-
     try:
-        response = requests.post(
-            f"{OLLAMA_BASE_URL}/api/generate",
-            json={
-                "model": OLLAMA_LLM_MODEL,
-                "prompt": prompt,
-                "stream": False,
-                "format": "json",
-                "options": {"temperature": 0.2},
-            },
-            timeout=60,
+        response = client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.2,
+            response_format={"type": "json_object"},
         )
-        response.raise_for_status()
-        raw = response.json().get("response", "")
+        raw = response.choices[0].message.content
         questions = json.loads(raw).get("questions", [])
 
-        # always include original query for full coverage
         if query not in questions:
             questions.insert(0, query)
 
