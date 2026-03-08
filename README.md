@@ -17,11 +17,11 @@ storing_retrieval.py   — embeds and indexes chunks into ChromaDB
 
 User asks a question
       ↓
-question_generation.py — breaks query into 3 focused sub-questions (via Ollama)
+question_generation.py — breaks query into 3 focused sub-questions (via groq llama3)
       ↓
 storing_retrieval.py   — retrieves relevant chunks for each sub-question
       ↓
-response_generation.py — generates final answer from retrieved context (via Ollama)
+response_generation.py — generates final answer from retrieved context (via groq llama3)
       ↓
 Answer returned to user
 ```
@@ -38,8 +38,8 @@ findoc-analyser/
 ├── chunking.py                 # Paragraph-aware chunker with 10-K section detection
 ├── constants.py                # Model names, paths, config
 ├── data_preprocessing.py       # PDF extraction, OCR fallback, text cleaning
-├── question_generation.py      # Sub-question decomposition via Ollama
-├── response_generation.py      # Answer generation via Ollama
+├── question_generation.py      # Sub-question decomposition via groq llama3
+├── response_generation.py      # Answer generation via groq llama3
 ├── storing_retrieval.py        # ChromaDB indexing and retrieval
 ├── qna.py                      # Pipeline orchestrator
 ├── requirements.txt            # Python dependencies
@@ -50,26 +50,6 @@ findoc-analyser/
 
 ## Installation
 
-**1. Install Ollama and pull a model**
-```bash
-# Install from https://ollama.com
-ollama pull llama3
-```
-
-**2. Clone the repository**
-```bash
-git clone https://github.com/your-username/findoc-analyser.git
-cd findoc-analyser
-```
-
-**3. Install Python dependencies**
-```bash
-pip install -r requirements.txt
-```
-
-No API keys needed — everything runs locally.
-
----
 
 ## Usage
 
