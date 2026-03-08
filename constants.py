@@ -1,9 +1,12 @@
 import os
 
-# LLM config (Ollama - runs locally, no API key needed)
-OLLAMA_BASE_URL = "http://localhost:11434"
-OLLAMA_MODEL = "llama3"               
+# Groq config
+GROQ_API_KEY = "your_key_here"
+GROQ_MODEL = "llama-3.3-70b-versatile"
 
+# ChromaDB
 CHROMADB_DIR = 'chromadb'
-EMBEDDING_MODEL = "all-MiniLM-L6-v2"  
-EMBEDDING_DIMENSIONS = 384             
+
+# Embeddings
+EMBEDDING_MODEL = "all-MiniLM-L6-v2"
+EMBEDDING_DIMENSIONS = 384
