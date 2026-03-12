@@ -32,7 +32,7 @@ def get_metadata(doc_name: str) -> dict:
     return meta or {}
 
 def get_chunks(doc_name: str) -> list:
-    raise notImplementedError
+    return store.get_all_chunks(doc_name)
 
 def ask(query: str, doc_name: str) -> str:
     """Run the full RAG pipeline for a query against an indexed document."""
