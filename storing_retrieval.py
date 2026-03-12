@@ -94,6 +94,33 @@ class VectorStore:
             "VectorStore ready — collection=%r  backend=%r  persist_dir=%r",
             collection_name, embedding_backend, persist_dir,
         )
+
+    # ------------------------------------------------------------------
+    # Metadata persistence (simple JSON files per document)
+    # ------------------------------------------------------------------
+ 
+    def save_metadata(self, doc_name: str, metadata: dict) -> None:
+        safe = doc_name.replace("/", "_").replace("\\", "_")
+        path = os.path.join(self._meta_dir, f"{safe}.json")
+        with open(path, "w") as f:
+            json.dump(metadata, f, indent=2)
+ 
+    def load_metadata(self, doc_name: str) -> Optional[dict]:
+        safe = doc_name.replace("/", "_").replace("\\", "_")
+        path = os.path.join(self._meta_dir, f"{safe}.json")
+        if not os.path.exists(path):
+            return None
+        with open(path) as f:
+            return json.load(f)
+ 
+    def list_metadata(self) -> dict[str, dict]:
+        result = {}
+        for fname in os.listdir(self._meta_dir):
+            if fname.endswith(".json"):
+                with open(os.path.join(self._meta_dir, fname)) as f:
+                    data = json.load(f)
+                    result[data.get("doc_name", fname)] = data
+        return result
     
 
     # ------------------------------------------------------------------
