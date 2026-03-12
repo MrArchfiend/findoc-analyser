@@ -24,7 +24,12 @@ def index_document(uploaded_file) -> str:
     return f"'{doc_name}' indexed successfully — {len(chunks)} chunks stored."
 
 def get_metadata(doc_name: str) -> dict:
-    raise notImplementedError
+    if doc_name in _metadata_cache:
+        return _metadata_cache[doc_name]
+    meta = store.load_metadata(doc_name)
+    if meta:
+        _metadata_cache[doc_name] = meta
+    return meta or {}
 
 def get_chunks(doc_name: str) -> list:
     raise notImplementedError
