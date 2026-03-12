@@ -23,6 +23,11 @@ def index_document(uploaded_file) -> str:
 
     return f"'{doc_name}' indexed successfully — {len(chunks)} chunks stored."
 
+def get_metadata(doc_name: str) -> dict:
+    raise notImplementedError
+
+def get_chunks(doc_name: str) -> list:
+    raise notImplementedError
 
 def ask(query: str, doc_name: str) -> str:
     """Run the full RAG pipeline for a query against an indexed document."""
