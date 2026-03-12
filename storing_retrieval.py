@@ -255,6 +255,26 @@ class VectorStore:
         merged.sort(key=lambda r: r.score, reverse=True)
         return merged[:top_k]
 
+    def get_all_chunks(self, doc_name: str) -> list[RetrievedChunk]:
+        """Return all chunks for a document, ordered by chunk_index."""
+        results = self._collection.get(
+            where={"doc_name": doc_name},
+            include=["documents", "metadatas"],
+        )
+        chunks = []
+        for doc, meta in zip(results["documents"], results["metadatas"]):
+            chunks.append(RetrievedChunk(
+                text=doc,
+                score=0.0,
+                doc_name=meta.get("doc_name", ""),
+                chunk_index=int(meta.get("chunk_index", -1)),
+                section_hint=meta.get("section_hint") or None,
+                char_start=int(meta.get("char_start", 0)),
+                char_end=int(meta.get("char_end", 0)),
+            ))
+        chunks.sort(key=lambda c: c.chunk_index)
+        return chunks
+
     # ------------------------------------------------------------------
     # Document management
     # ------------------------------------------------------------------
