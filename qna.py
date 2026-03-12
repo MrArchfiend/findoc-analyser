@@ -10,18 +10,22 @@ chunker = ParagraphAwareChunker()
 
 
 def index_document(uploaded_file) -> str:
-    """Preprocess, chunk and index a uploaded PDF into ChromaDB."""
     doc_name = uploaded_file.name
-
-    # skip if already indexed
+ 
     if doc_name in store.list_documents():
         return f"'{doc_name}' is already indexed."
-
+ 
     text = preprocess_data(uploaded_file)
     chunks = chunker.chunk(text)
     store.add_chunks(chunks, doc_name)
-
-    return f"'{doc_name}' indexed successfully — {len(chunks)} chunks stored."
+ 
+    metadata = extract_document_metadata(text)
+    metadata["doc_name"] = doc_name
+    metadata["chunk_count"] = len(chunks)
+    _metadata_cache[doc_name] = metadata
+    store.save_metadata(doc_name, metadata)
+ 
+    return f"'{doc_name}' indexed — {len(chunks)} chunks, company: {metadata.get('company_name') or 'unknown'}."
 
 def get_metadata(doc_name: str) -> dict:
     if doc_name in _metadata_cache:
@@ -34,20 +38,20 @@ def get_metadata(doc_name: str) -> dict:
 def get_chunks(doc_name: str) -> list:
     return store.get_all_chunks(doc_name)
 
-def ask(query: str, doc_name: str) -> str:
-    """Run the full RAG pipeline for a query against an indexed document."""
-
-    # step 1 — break query into sub-questions
+def ask(query: str, doc_name: str) -> tuple[str, list]:
+    """
+    Returns (answer, scored_chunks_sent_to_llm).
+    scored_chunks is a list of dicts with text, score, section_hint, chunk_index.
+    """
     subquestions = generate_subquestions(query)
-
-    # step 2 — retrieve relevant chunks for all sub-questions
-    chunks = store.batch_query(subquestions, doc_name=doc_name)
-
-    if not chunks:
-        return "No relevant information found in the document."
-
-    # step 3 — build context string from top chunks
-    context = "\n\n".join(rc.text for rc in chunks)
-
-    # step 4 — generate final answer
-    return generate_response(query, context)
+    retrieved = store.batch_query(subquestions, doc_name=doc_name, top_k=10)
+ 
+    if not retrieved:
+        return "No relevant information found in the document.", []
+ 
+    return generate_response(query, retrieved)
+ 
+ 
+def compare_documents(query: str, doc_names: list[str]) -> dict[str, tuple[str, list]]:
+    """Run ask() for each doc and return {doc_name: (answer, scored_chunks)}."""
+    return {doc: ask(query, doc_name=doc) for doc in doc_names}
