@@ -20,7 +20,7 @@ def index_document(uploaded_file) -> str:
     chunks = chunker.chunk(text)
     store.add_chunks(chunks, doc_name)
 
-    metadata = extract_document_metadata(text)
+    metadata = extract_document_metadata(text, chunks=chunks)
     metadata["doc_name"] = doc_name
     metadata["chunk_count"] = len(chunks)
     _metadata_cache[doc_name] = metadata
