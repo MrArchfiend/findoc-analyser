@@ -1,10 +1,879 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>$Title$</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FinDoc — Financial Document Intelligence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Mono:wght@400;500&family=Geist:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #0a0a0b;
+    --surface:  #111113;
+    --surface2: #18181c;
+    --border:   #232328;
+    --border2:  #2e2e36;
+    --text:     #e8e8ec;
+    --muted:    #6b6b78;
+    --accent:   #7c6af7;
+    --accent2:  #9d8fff;
+    --green:    #34d399;
+    --amber:    #fbbf24;
+    --red:      #f87171;
+    --mono:     'DM Mono', monospace;
+    --serif:    'Instrument Serif', serif;
+    --sans:     'Geist', sans-serif;
+    --radius:   10px;
+    --radius-lg: 16px;
+  }
+
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 14px; line-height: 1.6; }
+
+  /* ── Layout ── */
+  .shell { display: grid; grid-template-columns: 260px 1fr; height: 100vh; overflow: hidden; }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+
+  .sidebar-head {
+    padding: 24px 20px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .logo {
+    display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px;
+  }
+
+  .logo-mark {
+    font-family: var(--serif);
+    font-size: 22px;
+    color: var(--text);
+    letter-spacing: -0.5px;
+  }
+
+  .logo-mark em { color: var(--accent2); font-style: italic; }
+
+  .logo-tag {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .sidebar-sub { font-size: 12px; color: var(--muted); }
+
+  /* Upload zone */
+  .upload-zone {
+    margin: 16px;
+    border: 1.5px dashed var(--border2);
+    border-radius: var(--radius);
+    padding: 20px 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    position: relative;
+  }
+  .upload-zone:hover, .upload-zone.drag { border-color: var(--accent); background: rgba(124,106,247,0.05); }
+  .upload-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  .upload-icon { font-size: 24px; margin-bottom: 8px; }
+  .upload-text { font-size: 12px; color: var(--muted); line-height: 1.5; }
+  .upload-text strong { color: var(--text); display: block; margin-bottom: 2px; }
+
+  .btn {
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 8px 14px; border-radius: 8px; font-family: var(--sans);
+    font-size: 13px; font-weight: 500; cursor: pointer; border: none;
+    transition: opacity 0.15s, transform 0.1s;
+  }
+  .btn:active { transform: scale(0.98); }
+  .btn-primary { background: var(--accent); color: #fff; width: calc(100% - 32px); margin: 0 16px 16px; }
+  .btn-primary:hover { opacity: 0.88; }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); font-size: 12px; padding: 5px 10px; }
+  .btn-ghost:hover { border-color: var(--border2); color: var(--text); }
+  .btn-danger { background: transparent; color: var(--red); border: 1px solid transparent; font-size: 12px; padding: 4px 8px; }
+  .btn-danger:hover { background: rgba(248,113,113,0.08); }
+
+  /* Doc list */
+  .doc-list { flex: 1; overflow-y: auto; padding: 8px; }
+  .doc-list::-webkit-scrollbar { width: 4px; }
+  .doc-list::-webkit-scrollbar-track { background: transparent; }
+  .doc-list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  .doc-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 9px 10px; border-radius: 8px; cursor: pointer;
+    transition: background 0.15s; margin-bottom: 2px;
+    border: 1px solid transparent;
+  }
+  .doc-item:hover { background: var(--surface2); }
+  .doc-item.active { background: rgba(124,106,247,0.1); border-color: rgba(124,106,247,0.25); }
+
+  .doc-icon { font-size: 16px; flex-shrink: 0; }
+  .doc-info { flex: 1; min-width: 0; }
+  .doc-name { font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .doc-meta { font-size: 11px; color: var(--muted); }
+  .doc-del { opacity: 0; transition: opacity 0.15s; flex-shrink: 0; }
+  .doc-item:hover .doc-del { opacity: 1; }
+
+  .doc-empty { padding: 24px 16px; text-align: center; color: var(--muted); font-size: 12px; }
+
+  /* ── Main ── */
+  .main { display: flex; flex-direction: column; overflow: hidden; }
+
+  /* Tabs */
+  .tabs {
+    display: flex; gap: 0;
+    border-bottom: 1px solid var(--border);
+    padding: 0 24px;
+    flex-shrink: 0;
+  }
+  .tab {
+    padding: 14px 18px; font-size: 13px; font-weight: 500;
+    color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent;
+    transition: color 0.15s, border-color 0.15s; user-select: none;
+    margin-bottom: -1px;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent2); border-bottom-color: var(--accent); }
+
+  .tab-content { flex: 1; overflow: hidden; display: none; }
+  .tab-content.active { display: flex; flex-direction: column; }
+
+  /* ── Chat tab ── */
+  .chat-header {
+    padding: 16px 24px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 12px; flex-shrink: 0;
+  }
+  .chat-doc-badge {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--surface2); border: 1px solid var(--border2);
+    border-radius: 8px; padding: 6px 12px;
+  }
+  .chat-doc-badge .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
+  .chat-doc-badge .name { font-family: var(--mono); font-size: 12px; color: var(--text); }
+  .chat-placeholder { color: var(--muted); font-size: 13px; }
+
+  .messages { flex: 1; overflow-y: auto; padding: 24px; display: flex; flex-direction: column; gap: 20px; }
+  .messages::-webkit-scrollbar { width: 4px; }
+  .messages::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  .msg { display: flex; gap: 12px; animation: msgIn 0.2s ease; }
+  @keyframes msgIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+  .msg-avatar {
+    width: 32px; height: 32px; border-radius: 8px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 14px;
+  }
+  .msg.user .msg-avatar { background: rgba(124,106,247,0.15); border: 1px solid rgba(124,106,247,0.3); }
+  .msg.assistant .msg-avatar { background: var(--surface2); border: 1px solid var(--border2); }
+  .msg-body { flex: 1; min-width: 0; }
+  .msg-role { font-size: 11px; font-weight: 500; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.06em; }
+  .msg-text { font-size: 14px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; }
+  .msg.user .msg-text { color: var(--text); }
+  .msg.assistant .msg-text { color: #d0d0dc; }
+
+  .chunks-toggle {
+    margin-top: 10px; display: flex; align-items: center; gap: 6px;
+    font-size: 11px; color: var(--muted); cursor: pointer; user-select: none;
+  }
+  .chunks-toggle:hover { color: var(--text); }
+  .chunks-toggle svg { transition: transform 0.2s; }
+  .chunks-toggle.open svg { transform: rotate(180deg); }
+
+  .chunks-list { margin-top: 8px; display: none; flex-direction: column; gap: 6px; }
+  .chunks-list.open { display: flex; }
+
+  .chunk-card {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 12px;
+  }
+  .chunk-card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .chunk-section { font-size: 10px; font-weight: 500; font-family: var(--mono); color: var(--accent2);
+    background: rgba(124,106,247,0.1); padding: 2px 6px; border-radius: 4px; }
+  .chunk-score-wrap { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+  .chunk-bar { width: 60px; height: 4px; background: var(--border2); border-radius: 2px; overflow: hidden; }
+  .chunk-bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--green)); border-radius: 2px; }
+  .chunk-score-val { font-family: var(--mono); font-size: 10px; color: var(--green); }
+  .chunk-text { font-size: 12px; color: var(--muted); line-height: 1.6; }
+
+  .chat-input-wrap {
+    padding: 16px 24px; border-top: 1px solid var(--border); flex-shrink: 0;
+    display: flex; gap: 10px; align-items: flex-end;
+  }
+  .chat-input {
+    flex: 1; background: var(--surface2); border: 1px solid var(--border2);
+    border-radius: 10px; padding: 10px 14px; color: var(--text);
+    font-family: var(--sans); font-size: 14px; resize: none;
+    min-height: 42px; max-height: 120px; line-height: 1.5;
+    transition: border-color 0.15s;
+    outline: none;
+  }
+  .chat-input:focus { border-color: var(--accent); }
+  .chat-input::placeholder { color: var(--muted); }
+  .chat-input:disabled { opacity: 0.4; cursor: not-allowed; }
+  .send-btn {
+    background: var(--accent); border: none; border-radius: 8px; width: 38px; height: 38px;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+    flex-shrink: 0; transition: opacity 0.15s;
+  }
+  .send-btn:hover { opacity: 0.85; }
+  .send-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+  .send-btn svg { width: 16px; height: 16px; }
+
+  .chat-empty {
+    flex: 1; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 12px; color: var(--muted); padding: 40px;
+  }
+  .chat-empty-icon { font-size: 40px; opacity: 0.4; }
+  .chat-empty h3 { font-family: var(--serif); font-size: 20px; color: var(--text); font-weight: 400; }
+  .chat-empty p { font-size: 13px; text-align: center; max-width: 300px; line-height: 1.6; }
+
+  /* ── Documents tab ── */
+  .docs-scroll { flex: 1; overflow-y: auto; padding: 24px; display: flex; flex-direction: column; gap: 20px; }
+  .docs-scroll::-webkit-scrollbar { width: 4px; }
+  .docs-scroll::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  .doc-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-lg); overflow: hidden;
+  }
+  .doc-card-head {
+    padding: 18px 20px 14px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+  }
+  .doc-card-title { font-family: var(--serif); font-size: 19px; font-weight: 400; margin-bottom: 4px; }
+  .doc-card-sub { font-size: 12px; color: var(--muted); font-family: var(--mono); }
+  .doc-card-actions { display: flex; gap: 6px; flex-shrink: 0; flex-wrap: wrap; }
+
+  .badge {
+    display: inline-flex; align-items: center; padding: 2px 8px;
+    border-radius: 20px; font-size: 10px; font-weight: 500;
+    font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.04em;
+    margin-right: 6px;
+  }
+  .badge-10k  { background: rgba(52,211,153,0.1);  color: var(--green); border: 1px solid rgba(52,211,153,0.2); }
+  .badge-10q  { background: rgba(124,106,247,0.1); color: var(--accent2); border: 1px solid rgba(124,106,247,0.2); }
+  .badge-docx { background: rgba(251,191,36,0.1);  color: var(--amber); border: 1px solid rgba(251,191,36,0.2); }
+  .badge-pdf  { background: rgba(248,113,113,0.08); color: #fca5a5; border: 1px solid rgba(248,113,113,0.2); }
+  .badge-other { background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
+
+  .doc-summary { padding: 14px 20px; font-size: 13px; color: #a0a0b0; line-height: 1.7; border-bottom: 1px solid var(--border); }
+
+  .fin-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 1px; background: var(--border);
+  }
+  .fin-cell {
+    background: var(--surface); padding: 12px 16px;
+  }
+  .fin-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+  .fin-val { font-family: var(--mono); font-size: 14px; font-weight: 500; color: var(--green); }
+  .fin-null { font-family: var(--mono); font-size: 14px; color: var(--border2); }
+
+  .doc-dl-row { padding: 12px 20px; display: flex; gap: 8px; }
+
+  .btn-dl {
+    display: flex; align-items: center; gap: 6px; padding: 6px 12px;
+    border-radius: 7px; font-size: 12px; font-family: var(--mono);
+    font-weight: 500; cursor: pointer; border: 1px solid var(--border2);
+    background: transparent; color: var(--text); text-decoration: none;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .btn-dl:hover { border-color: var(--accent); background: rgba(124,106,247,0.06); color: var(--accent2); }
+
+  /* ── Chunks tab ── */
+  .chunks-toolbar {
+    padding: 16px 24px; border-bottom: 1px solid var(--border);
+    display: flex; gap: 10px; align-items: center; flex-shrink: 0; flex-wrap: wrap;
+  }
+  .select-input {
+    background: var(--surface2); border: 1px solid var(--border2);
+    color: var(--text); border-radius: 8px; padding: 7px 12px;
+    font-family: var(--sans); font-size: 13px; cursor: pointer;
+  }
+  .select-input:focus { outline: none; border-color: var(--accent); }
+  .chunks-count { font-size: 12px; color: var(--muted); margin-left: auto; }
+
+  .chunks-scroll { flex: 1; overflow-y: auto; padding: 16px 24px; display: flex; flex-direction: column; gap: 8px; }
+  .chunks-scroll::-webkit-scrollbar { width: 4px; }
+  .chunks-scroll::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  .chunk-row {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; overflow: hidden;
+  }
+  .chunk-row-head {
+    display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+    cursor: pointer; user-select: none;
+    transition: background 0.1s;
+  }
+  .chunk-row-head:hover { background: var(--surface2); }
+  .chunk-idx { font-family: var(--mono); font-size: 11px; color: var(--muted); min-width: 52px; }
+  .chunk-sec-pill { font-family: var(--mono); font-size: 10px; font-weight: 500;
+    background: rgba(124,106,247,0.1); color: var(--accent2); padding: 2px 7px; border-radius: 4px; }
+  .chunk-chars { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-left: auto; }
+  .chunk-chevron { color: var(--muted); transition: transform 0.2s; font-size: 12px; }
+  .chunk-row.open .chunk-chevron { transform: rotate(180deg); }
+  .chunk-body { display: none; padding: 0 14px 14px; }
+  .chunk-row.open .chunk-body { display: block; }
+  .chunk-body pre { font-family: var(--mono); font-size: 12px; color: #a0a0b0; white-space: pre-wrap; word-break: break-word; line-height: 1.7; }
+
+  /* ── Toast ── */
+  .toast-wrap { position: fixed; bottom: 24px; right: 24px; display: flex; flex-direction: column; gap: 8px; z-index: 9999; }
+  .toast {
+    background: var(--surface2); border: 1px solid var(--border2);
+    border-radius: 10px; padding: 12px 16px; font-size: 13px;
+    display: flex; align-items: center; gap: 10px; min-width: 260px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    animation: toastIn 0.25s ease;
+  }
+  @keyframes toastIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  .toast.success .toast-dot { background: var(--green); }
+  .toast.error .toast-dot { background: var(--red); }
+  .toast.info .toast-dot { background: var(--accent2); }
+  .toast-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .toast-msg { flex: 1; }
+
+  /* ── Spinner ── */
+  .spinner {
+    width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.15);
+    border-top-color: #fff; border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .typing-dots span {
+    display: inline-block; width: 5px; height: 5px; border-radius: 50%;
+    background: var(--muted); margin: 0 2px;
+    animation: dot 1.2s infinite;
+  }
+  .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+  .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes dot { 0%,80%,100%{transform:scale(1);opacity:0.4} 40%{transform:scale(1.3);opacity:1} }
+
+  .no-docs-empty {
+    flex: 1; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 8px; color: var(--muted);
+  }
+  .no-docs-empty .icon { font-size: 36px; opacity: 0.3; }
+  .no-docs-empty p { font-size: 13px; }
+</style>
 </head>
 <body>
-$END$
+
+<div class="shell">
+
+  <!-- ── Sidebar ── -->
+  <aside class="sidebar">
+    <div class="sidebar-head">
+      <div class="logo">
+        <span class="logo-mark">Fin<em>Doc</em></span>
+        <span class="logo-tag">v2.0</span>
+      </div>
+      <p class="sidebar-sub">Financial document intelligence</p>
+    </div>
+
+    <label class="upload-zone" id="uploadZone">
+      <input type="file" id="fileInput" accept=".pdf,.docx" multiple>
+      <div class="upload-icon">⬆</div>
+      <div class="upload-text">
+        <strong>Drop files here</strong>
+        PDF or DOCX supported
+      </div>
+    </label>
+
+    <button class="btn btn-primary" id="indexBtn" disabled>
+      <span id="indexBtnLabel">Index Document</span>
+    </button>
+
+    <div class="doc-list" id="docList">
+      <div class="doc-empty">No documents yet</div>
+    </div>
+  </aside>
+
+  <!-- ── Main ── -->
+  <main class="main">
+    <nav class="tabs">
+      <div class="tab active" data-tab="chat">💬 Chat</div>
+      <div class="tab" data-tab="docs">📁 Documents</div>
+      <div class="tab" data-tab="chunks">🔍 Chunks</div>
+    </nav>
+
+    <!-- Chat -->
+    <div class="tab-content active" id="tab-chat">
+      <div class="chat-header">
+        <div id="chatDocBadge" class="chat-placeholder">Select a document to start chatting</div>
+      </div>
+      <div id="chatEmpty" class="chat-empty">
+        <div class="chat-empty-icon">📊</div>
+        <h3>Ask anything about your filing</h3>
+        <p>Upload a 10-K or 10-Q, select it from the sidebar, then ask questions in natural language.</p>
+      </div>
+      <div class="messages" id="messages" style="display:none"></div>
+      <div class="chat-input-wrap">
+        <textarea class="chat-input" id="chatInput" placeholder="Ask about revenue, risks, executive compensation…" rows="1" disabled></textarea>
+        <button class="send-btn" id="sendBtn" disabled>
+          <svg viewBox="0 0 16 16" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 8H2M8 2l6 6-6 6"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Documents -->
+    <div class="tab-content" id="tab-docs">
+      <div class="docs-scroll" id="docsScroll">
+        <div class="no-docs-empty"><div class="icon">🗂</div><p>No documents indexed yet</p></div>
+      </div>
+    </div>
+
+    <!-- Chunks -->
+    <div class="tab-content" id="tab-chunks">
+      <div class="chunks-toolbar">
+        <select class="select-input" id="chunkDocSelect">
+          <option value="">— Select document —</option>
+        </select>
+        <select class="select-input" id="chunkSectionFilter">
+          <option value="">All sections</option>
+        </select>
+        <span class="chunks-count" id="chunksCount"></span>
+      </div>
+      <div class="chunks-scroll" id="chunksScroll"></div>
+    </div>
+  </main>
+</div>
+
+<div class="toast-wrap" id="toastWrap"></div>
+
+<script>
+const API = '';
+
+// ── API key — stored in sessionStorage, prompted once per session ─────────────
+function getApiKey() {
+  let key = sessionStorage.getItem('findoc_api_key');
+  if (!key) {
+    key = window.prompt('Enter your FinDoc API key:');
+    if (key) sessionStorage.setItem('findoc_api_key', key.trim());
+  }
+  return key ? key.trim() : '';
+}
+
+function clearApiKey() {
+  sessionStorage.removeItem('findoc_api_key');
+}
+
+let state = { docs: [], activeDock: null, chatHistory: [], pendingFile: null };
+
+// ── Utils ─────────────────────────────────────────────────────────────────────
+function toast(msg, type = 'info') {
+  const w = document.getElementById('toastWrap');
+  const t = document.createElement('div');
+  t.className = `toast ${type}`;
+  t.innerHTML = `<div class="toast-dot"></div><div class="toast-msg">${msg}</div>`;
+  w.appendChild(t);
+  setTimeout(() => t.remove(), 3800);
+}
+
+async function apiFetch(path, opts = {}) {
+  const key = getApiKey();
+  opts.headers = { ...(opts.headers || {}), 'Authorization': `Bearer ${key}` };
+  const res = await fetch(API + path, opts);
+  if (res.status === 401 || res.status === 403) {
+    clearApiKey();
+    toast('Invalid API key — please refresh and try again.', 'error');
+    throw new Error('Unauthorized');
+  }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || res.statusText);
+  }
+  return res;
+}
+
+function fileIcon(name) {
+  return name.endsWith('.docx') ? '📝' : '📄';
+}
+
+function docTypeBadge(type, filename) {
+  const t = (type || '').toUpperCase();
+  const ext = filename.endsWith('.docx') ? 'DOCX' : 'PDF';
+  const extCls = ext === 'DOCX' ? 'badge-docx' : 'badge-pdf';
+  let typeBadge = '';
+  if (t.includes('10-K')) typeBadge = `<span class="badge badge-10k">10-K</span>`;
+  else if (t.includes('10-Q')) typeBadge = `<span class="badge badge-10q">10-Q</span>`;
+  else if (t) typeBadge = `<span class="badge badge-other">${t}</span>`;
+  return `${typeBadge}<span class="badge ${extCls}">${ext}</span>`;
+}
+
+// ── Data ──────────────────────────────────────────────────────────────────────
+async function loadDocs() {
+  try {
+    const res = await apiFetch('/documents');
+    const data = await res.json();
+    state.docs = data.documents || [];
+    renderSidebarDocs();
+    renderDocsTab();
+    renderChunkDocSelect();
+  } catch(e) { toast('Failed to load documents', 'error'); }
+}
+
+// ── Sidebar ───────────────────────────────────────────────────────────────────
+function renderSidebarDocs() {
+  const el = document.getElementById('docList');
+  if (!state.docs.length) {
+    el.innerHTML = '<div class="doc-empty">No documents yet</div>';
+    return;
+  }
+  el.innerHTML = state.docs.map(d => `
+    <div class="doc-item ${state.activeDoc === d.doc_name ? 'active' : ''}" data-doc="${d.doc_name}" onclick="selectDoc('${d.doc_name}')">
+      <div class="doc-icon">${fileIcon(d.doc_name)}</div>
+      <div class="doc-info">
+        <div class="doc-name">${d.company_name || d.doc_name}</div>
+        <div class="doc-meta">${d.doc_type || ''} ${d.fiscal_year || ''} · ${d.chunk_count || '?'} chunks</div>
+      </div>
+      <button class="btn doc-del btn-danger" onclick="deleteDoc(event, '${d.doc_name}')">✕</button>
+    </div>
+  `).join('');
+}
+
+// ── Upload ────────────────────────────────────────────────────────────────────
+const fileInput = document.getElementById('fileInput');
+const indexBtn  = document.getElementById('indexBtn');
+const uploadZone = document.getElementById('uploadZone');
+
+fileInput.addEventListener('change', () => {
+  state.pendingFile = fileInput.files[0] || null;
+  indexBtn.disabled = !state.pendingFile;
+  if (state.pendingFile) {
+    document.querySelector('.upload-text').innerHTML =
+      `<strong>${state.pendingFile.name}</strong>Ready to index`;
+  }
+});
+
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault(); uploadZone.classList.remove('drag');
+  const f = e.dataTransfer.files[0];
+  if (f) { state.pendingFile = f; indexBtn.disabled = false;
+    document.querySelector('.upload-text').innerHTML = `<strong>${f.name}</strong>Ready to index`; }
+});
+
+indexBtn.addEventListener('click', async () => {
+  if (!state.pendingFile) return;
+  const label = document.getElementById('indexBtnLabel');
+  indexBtn.disabled = true;
+  label.innerHTML = '<div class="spinner"></div>';
+  const fd = new FormData();
+  fd.append('file', state.pendingFile);
+  try {
+    const res = await apiFetch('/documents/upload', { method: 'POST', body: fd });
+    const data = await res.json();
+    toast(data.message, 'success');
+    state.pendingFile = null;
+    fileInput.value = '';
+    document.querySelector('.upload-text').innerHTML = '<strong>Drop files here</strong>PDF or DOCX supported';
+    await loadDocs();
+    selectDoc(data.doc_name);
+  } catch(e) {
+    toast(e.message, 'error');
+  } finally {
+    label.textContent = 'Index Document';
+    indexBtn.disabled = false;
+  }
+});
+
+// ── Select / delete doc ───────────────────────────────────────────────────────
+function selectDoc(name) {
+  state.activeDoc = name;
+  state.chatHistory = [];
+  renderSidebarDocs();
+  updateChatHeader();
+  renderMessages();
+  document.getElementById('chatInput').disabled = false;
+  document.getElementById('sendBtn').disabled = false;
+}
+
+async function deleteDoc(e, name) {
+  e.stopPropagation();
+  try {
+    await apiFetch(`/documents/${encodeURIComponent(name)}`, { method: 'DELETE' });
+    toast(`Deleted ${name}`, 'success');
+    if (state.activeDoc === name) {
+      state.activeDoc = null;
+      updateChatHeader();
+      document.getElementById('chatInput').disabled = true;
+      document.getElementById('sendBtn').disabled = true;
+    }
+    await loadDocs();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+function updateChatHeader() {
+  const badge = document.getElementById('chatDocBadge');
+  if (state.activeDoc) {
+    const doc = state.docs.find(d => d.doc_name === state.activeDoc) || {};
+    badge.className = 'chat-doc-badge';
+    badge.innerHTML = `<div class="dot"></div><div class="name">${doc.company_name || state.activeDoc}</div>`;
+  } else {
+    badge.className = 'chat-placeholder';
+    badge.textContent = 'Select a document to start chatting';
+  }
+}
+
+// ── Chat ──────────────────────────────────────────────────────────────────────
+const chatInput = document.getElementById('chatInput');
+const sendBtn   = document.getElementById('sendBtn');
+
+chatInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+});
+chatInput.addEventListener('input', () => {
+  chatInput.style.height = 'auto';
+  chatInput.style.height = Math.min(chatInput.scrollHeight, 120) + 'px';
+});
+sendBtn.addEventListener('click', sendMessage);
+
+async function sendMessage() {
+  const q = chatInput.value.trim();
+  if (!q || !state.activeDoc) return;
+  chatInput.value = ''; chatInput.style.height = 'auto';
+
+  state.chatHistory.push({ role: 'user', text: q, chunks: [] });
+  renderMessages();
+
+  // Typing indicator
+  const typingId = 'typing-' + Date.now();
+  state.chatHistory.push({ role: 'typing', id: typingId });
+  renderMessages();
+
+  try {
+    const res = await apiFetch('/ask', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: q, doc_name: state.activeDoc }),
+    });
+    const data = await res.json();
+    state.chatHistory = state.chatHistory.filter(m => m.id !== typingId);
+    state.chatHistory.push({ role: 'assistant', text: data.answer, chunks: data.chunks_used || [] });
+  } catch(e) {
+    state.chatHistory = state.chatHistory.filter(m => m.id !== typingId);
+    state.chatHistory.push({ role: 'assistant', text: `Error: ${e.message}`, chunks: [] });
+  }
+  renderMessages();
+}
+
+function renderMessages() {
+  const empty   = document.getElementById('chatEmpty');
+  const msgsEl  = document.getElementById('messages');
+
+  if (!state.chatHistory.length) {
+    empty.style.display = 'flex'; msgsEl.style.display = 'none'; return;
+  }
+  empty.style.display = 'none'; msgsEl.style.display = 'flex';
+
+  msgsEl.innerHTML = state.chatHistory.map((m, i) => {
+    if (m.role === 'typing') return `
+      <div class="msg assistant">
+        <div class="msg-avatar">🤖</div>
+        <div class="msg-body">
+          <div class="msg-role">FinDoc</div>
+          <div class="typing-dots"><span></span><span></span><span></span></div>
+        </div>
+      </div>`;
+
+    if (m.role === 'user') return `
+      <div class="msg user">
+        <div class="msg-avatar">👤</div>
+        <div class="msg-body">
+          <div class="msg-role">You</div>
+          <div class="msg-text">${escHtml(m.text)}</div>
+        </div>
+      </div>`;
+
+    const chunksHtml = m.chunks.length ? `
+      <div class="chunks-toggle" onclick="toggleChunks(this)" id="ct-${i}">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M2 4l4 4 4-4"/>
+        </svg>
+        ${m.chunks.length} sources used
+      </div>
+      <div class="chunks-list" id="cl-${i}">
+        ${m.chunks.map(c => `
+          <div class="chunk-card">
+            <div class="chunk-card-head">
+              ${c.section_hint ? `<span class="chunk-section">${c.section_hint}</span>` : ''}
+              <div class="chunk-score-wrap">
+                <div class="chunk-bar"><div class="chunk-bar-fill" style="width:${Math.round(c.score*100)}%"></div></div>
+                <span class="chunk-score-val">${Math.round(c.score*100)}%</span>
+              </div>
+            </div>
+            <div class="chunk-text">${escHtml((c.text||'').slice(0,280))}${(c.text||'').length>280?'…':''}</div>
+          </div>`).join('')}
+      </div>` : '';
+
+    return `
+      <div class="msg assistant">
+        <div class="msg-avatar">🤖</div>
+        <div class="msg-body">
+          <div class="msg-role">FinDoc</div>
+          <div class="msg-text">${escHtml(m.text)}</div>
+          ${chunksHtml}
+        </div>
+      </div>`;
+  }).join('');
+
+  msgsEl.scrollTop = msgsEl.scrollHeight;
+}
+
+function toggleChunks(el) {
+  const id = el.id.replace('ct-', 'cl-');
+  const list = document.getElementById(id);
+  el.classList.toggle('open');
+  list.classList.toggle('open');
+}
+
+function escHtml(s) {
+  return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Documents tab ─────────────────────────────────────────────────────────────
+async function renderDocsTab() {
+  const el = document.getElementById('docsScroll');
+  if (!state.docs.length) {
+    el.innerHTML = '<div class="no-docs-empty"><div class="icon">🗂</div><p>No documents indexed yet</p></div>';
+    return;
+  }
+
+  // Fetch full metadata for each doc
+  const metas = await Promise.all(state.docs.map(d =>
+    apiFetch(`/documents/${encodeURIComponent(d.doc_name)}/metadata`)
+      .then(r => r.json()).catch(() => ({}))
+  ));
+
+  el.innerHTML = metas.map((meta, i) => {
+    const doc = state.docs[i];
+    const fin = meta.financials || {};
+    const finKeys = Object.keys(fin).filter(k => fin[k]);
+
+    const finGrid = finKeys.length ? `
+      <div class="fin-grid">
+        ${Object.entries(fin).map(([k, v]) => `
+          <div class="fin-cell">
+            <div class="fin-label">${k.replace(/_/g,' ')}</div>
+            ${v ? `<div class="fin-val">${escHtml(v)}</div>` : '<div class="fin-null">—</div>'}
+          </div>`).join('')}
+      </div>` : '';
+
+    const base = encodeURIComponent(doc.doc_name);
+    return `
+      <div class="doc-card">
+        <div class="doc-card-head">
+          <div>
+            <div class="doc-card-title">${escHtml(meta.company_name || doc.doc_name)}</div>
+            <div class="doc-card-sub">
+              ${docTypeBadge(meta.doc_type, doc.doc_name)}
+              ${meta.fiscal_year ? `<span class="badge badge-other">${meta.fiscal_year}</span>` : ''}
+              &nbsp;${doc.doc_name} · ${doc.chunk_count || '?'} chunks
+            </div>
+          </div>
+          <div class="doc-card-actions">
+            <a class="btn-dl" href="/documents/${base}/metadata/download/json" download>
+              ⬇ JSON
+            </a>
+            <a class="btn-dl" href="/documents/${base}/metadata/download/csv" download>
+              ⬇ CSV
+            </a>
+          </div>
+        </div>
+        ${meta.summary ? `<div class="doc-summary">${escHtml(meta.summary)}</div>` : ''}
+        ${finGrid}
+        <div class="doc-dl-row"></div>
+      </div>`;
+  }).join('');
+}
+
+// ── Chunks tab ────────────────────────────────────────────────────────────────
+function renderChunkDocSelect() {
+  const sel = document.getElementById('chunkDocSelect');
+  sel.innerHTML = '<option value="">— Select document —</option>' +
+    state.docs.map(d => `<option value="${d.doc_name}">${d.company_name || d.doc_name}</option>`).join('');
+}
+
+document.getElementById('chunkDocSelect').addEventListener('change', loadChunks);
+document.getElementById('chunkSectionFilter').addEventListener('change', filterChunks);
+
+let allChunks = [];
+async function loadChunks() {
+  const doc = document.getElementById('chunkDocSelect').value;
+  const scroll = document.getElementById('chunksScroll');
+  if (!doc) { scroll.innerHTML = ''; allChunks = []; return; }
+  scroll.innerHTML = '<div style="color:var(--muted);padding:20px;font-size:13px">Loading…</div>';
+  try {
+    const res = await apiFetch(`/documents/${encodeURIComponent(doc)}/chunks`);
+    const data = await res.json();
+    allChunks = data.chunks || [];
+
+    // Populate section filter
+    const sections = [...new Set(allChunks.map(c => c.section_hint).filter(Boolean))].sort();
+    const secSel = document.getElementById('chunkSectionFilter');
+    secSel.innerHTML = '<option value="">All sections</option>' +
+      sections.map(s => `<option value="${s}">${s}</option>`).join('');
+
+    renderChunks(allChunks);
+  } catch(e) { scroll.innerHTML = `<div style="color:var(--red);padding:20px">${e.message}</div>`; }
+}
+
+function filterChunks() {
+  const sec = document.getElementById('chunkSectionFilter').value;
+  renderChunks(sec ? allChunks.filter(c => c.section_hint === sec) : allChunks);
+}
+
+function renderChunks(chunks) {
+  document.getElementById('chunksCount').textContent = `${chunks.length} chunks`;
+  const scroll = document.getElementById('chunksScroll');
+  if (!chunks.length) { scroll.innerHTML = '<div style="color:var(--muted);padding:20px;font-size:13px">No chunks found.</div>'; return; }
+  scroll.innerHTML = chunks.map(c => `
+    <div class="chunk-row" id="chunk-${c.chunk_index}">
+      <div class="chunk-row-head" onclick="toggleChunkRow(${c.chunk_index})">
+        <span class="chunk-idx">#${c.chunk_index}</span>
+        ${c.section_hint ? `<span class="chunk-sec-pill">${c.section_hint}</span>` : ''}
+        <span class="chunk-chars">${c.char_start}–${c.char_end}</span>
+        <span class="chunk-chevron">▾</span>
+      </div>
+      <div class="chunk-body">
+        <pre>${escHtml(c.text)}</pre>
+      </div>
+    </div>`).join('');
+}
+
+function toggleChunkRow(idx) {
+  document.getElementById(`chunk-${idx}`).classList.toggle('open');
+}
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+    if (tab.dataset.tab === 'docs') renderDocsTab();
+  });
+});
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+loadDocs();
+</script>
 </body>
 </html>
