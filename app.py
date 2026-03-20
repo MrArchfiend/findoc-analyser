@@ -1,4 +1,7 @@
+import csv
+import io
 import json
+import re
 import streamlit as st
 from qna import index_document, ask, get_metadata, get_chunks, store
 
@@ -131,6 +134,7 @@ st.markdown("""
     .tag { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 4px; font-size: 0.72rem; font-weight: 600; margin-right: 0.3rem; }
     .tag-10k  { background: #1a3a2a; color: #3fb950; }
     .tag-10q  { background: #1a2a3a; color: #58a6ff; }
+    .tag-docx { background: #2a1a3a; color: #bc8cff; }
     .tag-other { background: #2a2a1a; color: #d29922; }
 </style>
 """, unsafe_allow_html=True)
@@ -263,7 +267,7 @@ with tab_docs:
     all_meta = store.list_metadata()
 
     if not docs:
-        st.info("No documents indexed yet. Upload a PDF from the sidebar.")
+        st.info("No documents indexed yet. Upload a PDF or DOCX from the sidebar.")
     else:
         for doc in docs:
             meta = all_meta.get(doc, {})
@@ -274,13 +278,26 @@ with tab_docs:
             financials = meta.get("financials") or {}
             chunk_count = meta.get("chunk_count", "?")
 
-            tag_cls = "tag-10k" if "10-K" in doc_type else ("tag-10q" if "10-Q" in doc_type else "tag-other")
+            # Tag colour: 10-K green, 10-Q blue, DOCX purple, other yellow
+            if "10-K" in doc_type:
+                tag_cls = "tag-10k"
+            elif "10-Q" in doc_type:
+                tag_cls = "tag-10q"
+            elif doc.lower().endswith(".docx"):
+                tag_cls = "tag-docx"
+            else:
+                tag_cls = "tag-other"
+
+            # File-type badge shown alongside doc_type
+            ext = "DOCX" if doc.lower().endswith(".docx") else "PDF"
+            ext_cls = "tag-docx" if ext == "DOCX" else "tag-other"
 
             year_tag = f'<span class="tag tag-other">{year}</span>' if year else ""
             st.markdown(
                 f'<div class="fin-card">'
                 f'<h4>{company}'
                 f'  <span class="tag {tag_cls}">{doc_type or "DOC"}</span>'
+                f'  <span class="tag {ext_cls}">{ext}</span>'
                 f'  {year_tag}'
                 f'</h4>'
                 f'<p style="color:#8b949e;font-size:0.75rem;margin-bottom:0.5rem">'
@@ -301,14 +318,38 @@ with tab_docs:
                 kv_html += '</div>'
                 st.markdown(kv_html, unsafe_allow_html=True)
 
-            col_dl, _ = st.columns([1, 5])
-            with col_dl:
+            # Build CSV bytes from flat metadata + financials
+            def _build_csv(m: dict) -> bytes:
+                buf = io.StringIO()
+                writer = csv.writer(buf)
+                writer.writerow(["field", "value"])
+                for k, v in m.items():
+                    if k == "financials":
+                        for fk, fv in (v or {}).items():
+                            writer.writerow([f"financials.{fk}", fv or ""])
+                    else:
+                        writer.writerow([k, v or ""])
+                return buf.getvalue().encode()
+
+            base_name = re.sub(r"\.(pdf|docx)$", "", doc, flags=re.IGNORECASE)
+            col_json, col_csv, _ = st.columns([1, 1, 4])
+            with col_json:
                 st.download_button(
-                    label="⬇ Download JSON",
+                    label="⬇ JSON",
                     data=json.dumps(meta, indent=2),
-                    file_name=f"{doc.replace('.pdf', '')}_metadata.json",
+                    file_name=f"{base_name}_metadata.json",
                     mime="application/json",
-                    key=f"dl_{doc}",
+                    key=f"dl_json_{doc}",
+                    use_container_width=True,
+                )
+            with col_csv:
+                st.download_button(
+                    label="⬇ CSV",
+                    data=_build_csv(meta),
+                    file_name=f"{base_name}_metadata.csv",
+                    mime="text/csv",
+                    key=f"dl_csv_{doc}",
+                    use_container_width=True,
                 )
             st.markdown("<hr style='border-color:#21262d;margin:1.5rem 0'>", unsafe_allow_html=True)
 
