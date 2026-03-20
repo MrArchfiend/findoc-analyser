@@ -1,6 +1,6 @@
 import json
 import streamlit as st
-from qna import index_document, ask, get_metadata, get_chunks, compare_documents, store
+from qna import index_document, ask, get_metadata, get_chunks, store
 
 st.set_page_config(page_title="FinDoc Analyser v2", page_icon="📊", layout="wide")
 
@@ -149,7 +149,7 @@ with st.sidebar:
     st.caption("SEC filing analysis & comparison")
     st.divider()
 
-    uploaded_file = st.file_uploader("Upload a 10-K / 10-Q PDF", type=["pdf"])
+    uploaded_file = st.file_uploader("Upload a 10-K / 10-Q PDF or DOCX", type=["pdf", "docx"])
     if uploaded_file:
         if st.button("Index Document", use_container_width=True, type="primary"):
             with st.spinner("Indexing & extracting metadata…"):
@@ -194,8 +194,8 @@ with st.sidebar:
         st.rerun()
 
 # ── main ───────────────────────────────────────────────────────────────────────
-tab_chat, tab_docs, tab_chunks, tab_compare = st.tabs(
-    ["💬 Chat", "📁 Documents", "🔍 Chunk Viewer", "⚖️ Comparison"]
+tab_chat, tab_docs, tab_chunks = st.tabs(
+    ["💬 Chat", "📁 Documents", "🔍 Chunk Viewer"]
 )
 
 # ─── TAB 1: CHAT ──────────────────────────────────────────────────────────────
@@ -276,11 +276,12 @@ with tab_docs:
 
             tag_cls = "tag-10k" if "10-K" in doc_type else ("tag-10q" if "10-Q" in doc_type else "tag-other")
 
+            year_tag = f'<span class="tag tag-other">{year}</span>' if year else ""
             st.markdown(
                 f'<div class="fin-card">'
                 f'<h4>{company}'
                 f'  <span class="tag {tag_cls}">{doc_type or "DOC"}</span>'
-                f'  {"<span class=\\"tag tag-other\\">" + year + "</span>" if year else ""}'
+                f'  {year_tag}'
                 f'</h4>'
                 f'<p style="color:#8b949e;font-size:0.75rem;margin-bottom:0.5rem">'
                 f'📄 {doc} &nbsp;·&nbsp; {chunk_count} chunks</p>'
@@ -345,71 +346,3 @@ with tab_chunks:
                         unsafe_allow_html=True,
                     )
                     st.text(c.text)
-
-
-# ─── TAB 4: COMPARISON ────────────────────────────────────────────────────────
-with tab_compare:
-    docs = store.list_documents()
-    if len(docs) < 2:
-        st.info("Index at least 2 documents to use comparison.")
-    else:
-        all_meta = store.list_metadata()
-        doc_labels = {d: (all_meta.get(d, {}).get("company_name") or d) for d in docs}
-
-        selected_docs = st.multiselect(
-            "Select documents to compare (2 or more)",
-            options=docs,
-            format_func=lambda d: f"{doc_labels[d]}  ({d})",
-            default=docs[:2],
-        )
-
-        comp_query = st.text_input("Comparison question", placeholder="e.g. What are the main risk factors?")
-
-        if st.button("Run Comparison", type="primary", disabled=len(selected_docs) < 2 or not comp_query):
-            with st.spinner("Running comparison across documents…"):
-                results = compare_documents(comp_query, selected_docs)
-
-            cols = st.columns(len(selected_docs))
-            for col, doc in zip(cols, selected_docs):
-                label = doc_labels[doc]
-                answer, scored_chunks = results[doc]
-                with col:
-                    st.markdown(f'<div class="comp-col-header">{label}</div>', unsafe_allow_html=True)
-                    st.markdown(f'<div class="comp-answer">{answer}</div>', unsafe_allow_html=True)
-                    if scored_chunks:
-                        with st.expander(f"Chunks ({len(scored_chunks)})", expanded=False):
-                            for c in scored_chunks:
-                                pct = int(c["score"] * 100)
-                                st.markdown(
-                                    f'<div class="chunk-used">'
-                                    f'<div class="ch-meta">#{c["chunk_index"]} · {c.get("section_hint") or "—"} · {c["score"]:.4f}</div>'
-                                    f'<div class="score-bar-wrap"><div class="score-bar-bg"><div class="score-bar-fill" style="width:{pct}%"></div></div>'
-                                    f'<span class="score-label">{pct}%</span></div>'
-                                    f'{c["text"][:200]}…</div>',
-                                    unsafe_allow_html=True,
-                                )
-
-        # Side-by-side financial metrics comparison
-        if len(selected_docs) >= 2:
-            st.markdown("---")
-            st.markdown("#### Financial Metrics Comparison")
-            fin_keys = [
-                "revenue", "net_income", "eps_diluted", "gross_margin", "operating_margin",
-                "net_margin", "total_assets", "total_liabilities", "shareholders_equity",
-                "debt_to_equity", "current_ratio", "return_on_equity", "free_cash_flow",
-            ]
-            header_cols = st.columns([2] + [2] * len(selected_docs))
-            header_cols[0].markdown("**Metric**")
-            for i, doc in enumerate(selected_docs):
-                header_cols[i + 1].markdown(f"**{doc_labels[doc]}**")
-
-            for key in fin_keys:
-                row_cols = st.columns([2] + [2] * len(selected_docs))
-                row_cols[0].markdown(f"<span style='color:#8b949e;font-size:0.85rem'>{key.replace('_', ' ').title()}</span>", unsafe_allow_html=True)
-                for i, doc in enumerate(selected_docs):
-                    meta = all_meta.get(doc, {})
-                    val = (meta.get("financials") or {}).get(key)
-                    row_cols[i + 1].markdown(
-                        f"<span style='font-family:DM Mono,monospace;font-size:0.9rem;color:{'#3fb950' if val else '#484f58'}'>{val or '—'}</span>",
-                        unsafe_allow_html=True,
-                    )

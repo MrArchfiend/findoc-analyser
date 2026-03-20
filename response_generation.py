@@ -6,7 +6,7 @@ client = Groq(api_key=GROQ_API_KEY)
 
 def generate_response(query: str, retrieved_chunks: list) -> tuple[str, list]:
     """
-    Re-rank retrieved chunks, send top TOP_K_TO_LLM to the LLM.
+    Select top TOP_K_TO_LLM chunks and generate an answer.
 
     Args:
         query: original user question
