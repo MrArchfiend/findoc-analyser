@@ -14,7 +14,6 @@ Security layers implemented:
 """
 
 import csv
-import hashlib
 import html
 import io
 import json
@@ -26,7 +25,7 @@ from typing import Annotated, Optional
 
 from fastapi import Depends, FastAPI, File, Header, HTTPException, Request, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -42,7 +41,7 @@ logger = logging.getLogger("findoc")
 _API_KEY = os.environ.get("FINDOC_API_KEY", "")
 if not _API_KEY:
     _API_KEY = secrets.token_urlsafe(32)
-    logger.warning("FINDOC_API_KEY not set — generated ephemeral key: %s", _API_KEY)
+    print(f"[FinDoc] FINDOC_API_KEY not set — generated ephemeral key: {_API_KEY}", flush=True)
 
 # Comma-separated allowed origins, e.g. "https://yourdomain.com,http://localhost:3000"
 _CORS_ORIGINS = [o.strip() for o in os.environ.get("FINDOC_CORS_ORIGINS", "http://localhost:8000").split(",")]
@@ -75,7 +74,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=_CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "DELETE"],
+    allow_methods=["GET", "POST", "DELETE", "PATCH"],
     allow_headers=["Authorization", "Content-Type"],
 )
 
@@ -187,6 +186,35 @@ class AskResponse(BaseModel):
     doc_name: str
     answer: str
     chunks_used: list
+    answer_id: str  # unique ID so frontend can reference this answer in feedback
+
+
+class FeedbackRequest(BaseModel):
+    answer_id: str = Field(..., min_length=1, max_length=64)
+    query: str = Field(..., min_length=1, max_length=1000)
+    doc_name: str = Field(..., min_length=1, max_length=255)
+    vote: str = Field(..., pattern=r"^(up|down)$")
+    comment: Optional[str] = Field(default=None, max_length=500)
+    previous_answer: str = Field(..., min_length=1, max_length=8000)
+
+    @field_validator("query", "previous_answer")
+    @classmethod
+    def strip_html_fields(cls, v: str) -> str:
+        return re.sub(r'<[^>]+>', '', v).strip()
+
+    @field_validator("doc_name")
+    @classmethod
+    def doc_name_safe(cls, v: str) -> str:
+        if ".." in v or "/" in v or "\\" in v:
+            raise ValueError("Invalid doc_name.")
+        return v.strip()
+
+
+class FeedbackResponse(BaseModel):
+    answer_id: str
+    improved_answer: Optional[str]
+    chunks_used: list
+    message: str
 
 
 # ── Static (no auth — serves the frontend) ────────────────────────────────────
@@ -353,4 +381,74 @@ async def ask_question(request: Request, body: AskRequest):
         doc_name=doc_name,
         answer=answer,
         chunks_used=scored_chunks,
+        answer_id=secrets.token_hex(16),
     )
+
+# ── Feedback ───────────────────────────────────────────────────────────────────
+
+# In-memory feedback log — in production replace with a DB or file store
+_feedback_log: list[dict] = []
+
+@app.post("/feedback", summary="Submit up/down vote on an answer", response_model=FeedbackResponse, dependencies=[AuthDep])
+@limiter.limit("30/minute")
+async def submit_feedback(request: Request, body: FeedbackRequest):
+    doc_name = _sanitise_doc_name(body.doc_name)
+    comment_clean = _strip_html(body.comment or "")
+
+    # Log every vote regardless of direction
+    log_entry = {
+        "answer_id":       body.answer_id,
+        "vote":            body.vote,
+        "query":           body.query,
+        "doc_name":        doc_name,
+        "comment":         comment_clean,
+        "previous_answer": body.previous_answer[:500],  # truncate for log
+    }
+    _feedback_log.append(log_entry)
+    logger.info("Feedback received: %s", log_entry)
+
+    # Upvote — no retry needed, just acknowledge
+    if body.vote == "up":
+        return FeedbackResponse(
+            answer_id=body.answer_id,
+            improved_answer=None,
+            chunks_used=[],
+            message="Thanks for the positive feedback!",
+        )
+
+    # Downvote — regenerate with feedback context
+    docs = store.list_documents()
+    if doc_name not in docs:
+        raise HTTPException(status_code=404, detail="Document not found.")
+
+    try:
+        from response_generation import generate_response_with_feedback
+        from question_generation import generate_subquestions
+        subquestions = generate_subquestions(body.query)
+        retrieved = store.batch_query(subquestions, doc_name=doc_name, top_k=10)
+        if not retrieved:
+            raise HTTPException(status_code=422, detail="No relevant content found in document to retry with.")
+        improved_answer, scored_chunks = generate_response_with_feedback(
+            query=body.query,
+            retrieved_chunks=retrieved,
+            previous_answer=body.previous_answer,
+            feedback_comment=comment_clean,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Feedback retry failed for answer_id=%s", body.answer_id)
+        raise HTTPException(status_code=500, detail="Could not generate an improved answer. Please try rephrasing your question.")
+
+    return FeedbackResponse(
+        answer_id=secrets.token_hex(16),
+        improved_answer=improved_answer,
+        chunks_used=scored_chunks,
+        message="Here\'s an improved answer based on your feedback.",
+    )
+
+
+@app.get("/feedback", summary="Get all feedback logs", dependencies=[AuthDep], include_in_schema=True)
+@limiter.limit("10/minute")
+async def get_feedback(request: Request):
+    return {"total": len(_feedback_log), "feedback": _feedback_log}

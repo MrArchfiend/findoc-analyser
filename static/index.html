@@ -367,6 +367,75 @@
   }
   .no-docs-empty .icon { font-size: 36px; opacity: 0.3; }
   .no-docs-empty p { font-size: 13px; }
+
+  /* ── Feedback buttons ── */
+  .feedback-row {
+    display: flex; align-items: center; gap: 6px; margin-top: 10px;
+  }
+  .vote-btn {
+    display: flex; align-items: center; gap: 4px; padding: 4px 10px;
+    border-radius: 6px; border: 1px solid var(--border2); background: transparent;
+    color: var(--muted); font-size: 12px; cursor: pointer;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
+    font-family: var(--sans);
+  }
+  .vote-btn:hover { border-color: var(--border); color: var(--text); }
+  .vote-btn.up:hover, .vote-btn.up.active { border-color: var(--green); color: var(--green); background: rgba(52,211,153,0.08); }
+  .vote-btn.down:hover, .vote-btn.down.active { border-color: var(--red); color: var(--red); background: rgba(248,113,113,0.08); }
+  .vote-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .feedback-label { font-size: 11px; color: var(--muted); margin-left: 4px; }
+  .retry-badge {
+    font-size: 10px; font-family: var(--mono); color: var(--amber);
+    background: rgba(251,191,36,0.1); border: 1px solid rgba(251,191,36,0.2);
+    border-radius: 4px; padding: 2px 6px; margin-left: auto;
+  }
+
+  /* ── Feedback modal ── */
+  .modal-backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+    display: flex; align-items: center; justify-content: center; z-index: 1000;
+    animation: fadeIn 0.15s ease;
+  }
+  @keyframes fadeIn { from{opacity:0} to{opacity:1} }
+  .modal {
+    background: var(--surface2); border: 1px solid var(--border2);
+    border-radius: var(--radius-lg); padding: 24px; width: 420px; max-width: 90vw;
+    animation: slideUp 0.2s ease;
+  }
+  @keyframes slideUp { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:none} }
+  .modal-title { font-size: 15px; font-weight: 500; margin-bottom: 6px; }
+  .modal-sub { font-size: 12px; color: var(--muted); margin-bottom: 16px; line-height: 1.5; }
+  .modal-textarea {
+    width: 100%; background: var(--surface); border: 1px solid var(--border2);
+    border-radius: 8px; padding: 10px 12px; color: var(--text); font-family: var(--sans);
+    font-size: 13px; resize: vertical; min-height: 80px; outline: none;
+    transition: border-color 0.15s;
+  }
+  .modal-textarea:focus { border-color: var(--accent); }
+  .modal-textarea::placeholder { color: var(--muted); }
+  .modal-actions { display: flex; gap: 8px; margin-top: 14px; justify-content: flex-end; }
+  .btn-sm { padding: 7px 14px; border-radius: 7px; font-size: 13px; border: none; cursor: pointer; font-family: var(--sans); }
+  .btn-sm-cancel { background: var(--surface); border: 1px solid var(--border2); color: var(--muted); }
+  .btn-sm-cancel:hover { color: var(--text); }
+  .btn-sm-submit { background: var(--accent); color: white; }
+  .btn-sm-submit:hover { opacity: 0.88; }
+  .btn-sm-submit:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ── Error banner ── */
+  .error-banner {
+    background: rgba(248,113,113,0.08); border: 1px solid rgba(248,113,113,0.25);
+    border-radius: 8px; padding: 10px 14px; font-size: 13px; color: #fca5a5;
+    display: flex; align-items: flex-start; gap: 10px; margin-bottom: 8px;
+  }
+  .error-banner .err-icon { flex-shrink: 0; margin-top: 1px; }
+  .error-banner .err-body { flex: 1; }
+  .error-banner .err-title { font-weight: 500; margin-bottom: 2px; }
+  .error-banner .err-detail { font-size: 12px; opacity: 0.8; line-height: 1.5; }
+  .error-banner .err-action { font-size: 11px; color: var(--accent2); cursor: pointer; margin-top: 4px; display: inline-block; }
+  .error-banner .err-action:hover { text-decoration: underline; }
+  .error-banner .err-dismiss { flex-shrink: 0; cursor: pointer; color: var(--muted); font-size: 16px; line-height: 1; }
+  .error-banner .err-dismiss:hover { color: var(--text); }
+
 </style>
 </head>
 <body>
@@ -458,7 +527,7 @@
 <script>
 const API = '';
 
-// ── API key — stored in sessionStorage, prompted once per session ─────────────
+// ── API key ────────────────────────────────────────────────────────────────────
 function getApiKey() {
   let key = sessionStorage.getItem('findoc_api_key');
   if (!key) {
@@ -467,12 +536,53 @@ function getApiKey() {
   }
   return key ? key.trim() : '';
 }
+function clearApiKey() { sessionStorage.removeItem('findoc_api_key'); }
 
-function clearApiKey() {
-  sessionStorage.removeItem('findoc_api_key');
+// ── State ─────────────────────────────────────────────────────────────────────
+let state = { docs: [], activeDoc: null, chatHistory: [], pendingFile: null };
+
+// Feedback state
+let _feedbackCtx = null;  // { msgIndex, answerId, query, docName, prevAnswer }
+
+// ── Error handling ────────────────────────────────────────────────────────────
+const ERROR_MESSAGES = {
+  400: { title: 'Invalid request', detail: 'The request was malformed. Check the file type or input and try again.' },
+  401: { title: 'Authentication required', detail: 'Your API key is missing. Please refresh the page and enter your key.', action: 'Clear key & retry', actionFn: () => { clearApiKey(); location.reload(); } },
+  403: { title: 'Invalid API key', detail: 'The API key you entered is incorrect.', action: 'Clear key & retry', actionFn: () => { clearApiKey(); location.reload(); } },
+  404: { title: 'Not found', detail: 'The document or resource was not found. It may have been deleted.' },
+  413: { title: 'File too large', detail: 'The file exceeds the maximum upload size (50 MB). Please use a smaller file.' },
+  422: { title: 'No content found', detail: 'The document did not contain enough relevant content to answer this question. Try rephrasing.' },
+  429: { title: 'Too many requests', detail: 'You have sent too many requests. Please wait a moment before trying again.', action: 'Wait 60s', actionFn: null },
+  500: { title: 'Server error', detail: 'Something went wrong on the server. Please try again, or check that your GROQ_API_KEY is set correctly.' },
+  503: { title: 'Service unavailable', detail: 'The server is temporarily unavailable. Please try again in a few moments.' },
+  network: { title: 'Network error', detail: 'Could not reach the server. Check your internet connection and that the server is running.' },
+};
+
+function getErrorInfo(statusOrType, serverDetail) {
+  const info = ERROR_MESSAGES[statusOrType] || { title: 'Unexpected error', detail: serverDetail || 'An unknown error occurred.' };
+  return { ...info, detail: serverDetail && statusOrType !== 401 && statusOrType !== 403 ? serverDetail : info.detail };
 }
 
-let state = { docs: [], activeDock: null, chatHistory: [], pendingFile: null };
+function showErrorBanner(container, statusOrType, serverDetail) {
+  const info = getErrorInfo(statusOrType, serverDetail);
+  const id = 'err-' + Date.now();
+  const actionHtml = info.action
+    ? `<span class="err-action" onclick="${info.actionFn ? `(${info.actionFn.toString()})()` : ''}">${info.action}</span>`
+    : '';
+  const banner = document.createElement('div');
+  banner.className = 'error-banner';
+  banner.id = id;
+  banner.innerHTML = `
+    <span class="err-icon">⚠</span>
+    <div class="err-body">
+      <div class="err-title">${info.title}</div>
+      <div class="err-detail">${info.detail}</div>
+      ${actionHtml}
+    </div>
+    <span class="err-dismiss" onclick="document.getElementById('${id}').remove()">×</span>`;
+  container.prepend(banner);
+  setTimeout(() => banner.remove(), 8000);
+}
 
 // ── Utils ─────────────────────────────────────────────────────────────────────
 function toast(msg, type = 'info') {
@@ -487,22 +597,23 @@ function toast(msg, type = 'info') {
 async function apiFetch(path, opts = {}) {
   const key = getApiKey();
   opts.headers = { ...(opts.headers || {}), 'Authorization': `Bearer ${key}` };
-  const res = await fetch(API + path, opts);
+  let res;
+  try {
+    res = await fetch(API + path, opts);
+  } catch (networkErr) {
+    throw { type: 'network', message: 'Network error' };
+  }
   if (res.status === 401 || res.status === 403) {
     clearApiKey();
-    toast('Invalid API key — please refresh and try again.', 'error');
-    throw new Error('Unauthorized');
   }
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(err.detail || res.statusText);
+    const body = await res.json().catch(() => ({}));
+    throw { type: 'http', status: res.status, message: body.detail || res.statusText };
   }
   return res;
 }
 
-function fileIcon(name) {
-  return name.endsWith('.docx') ? '📝' : '📄';
-}
+function fileIcon(name) { return name.endsWith('.docx') ? '📝' : '📄'; }
 
 function docTypeBadge(type, filename) {
   const t = (type || '').toUpperCase();
@@ -515,6 +626,10 @@ function docTypeBadge(type, filename) {
   return `${typeBadge}<span class="badge ${extCls}">${ext}</span>`;
 }
 
+function escHtml(s) {
+  return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
 // ── Data ──────────────────────────────────────────────────────────────────────
 async function loadDocs() {
   try {
@@ -522,9 +637,10 @@ async function loadDocs() {
     const data = await res.json();
     state.docs = data.documents || [];
     renderSidebarDocs();
-    renderDocsTab();
     renderChunkDocSelect();
-  } catch(e) { toast('Failed to load documents', 'error'); }
+  } catch(e) {
+    showErrorBanner(document.getElementById('docList'), e.type === 'network' ? 'network' : e.status, e.message);
+  }
 }
 
 // ── Sidebar ───────────────────────────────────────────────────────────────────
@@ -535,28 +651,27 @@ function renderSidebarDocs() {
     return;
   }
   el.innerHTML = state.docs.map(d => `
-    <div class="doc-item ${state.activeDoc === d.doc_name ? 'active' : ''}" data-doc="${d.doc_name}" onclick="selectDoc('${d.doc_name}')">
+    <div class="doc-item ${state.activeDoc === d.doc_name ? 'active' : ''}" onclick="selectDoc('${escHtml(d.doc_name)}')">
       <div class="doc-icon">${fileIcon(d.doc_name)}</div>
       <div class="doc-info">
-        <div class="doc-name">${d.company_name || d.doc_name}</div>
-        <div class="doc-meta">${d.doc_type || ''} ${d.fiscal_year || ''} · ${d.chunk_count || '?'} chunks</div>
+        <div class="doc-name">${escHtml(d.company_name || d.doc_name)}</div>
+        <div class="doc-meta">${escHtml(d.doc_type || '')} ${escHtml(d.fiscal_year || '')} · ${d.chunk_count || '?'} chunks</div>
       </div>
-      <button class="btn doc-del btn-danger" onclick="deleteDoc(event, '${d.doc_name}')">✕</button>
+      <button class="btn doc-del btn-danger" onclick="deleteDoc(event, '${escHtml(d.doc_name)}')">✕</button>
     </div>
   `).join('');
 }
 
 // ── Upload ────────────────────────────────────────────────────────────────────
-const fileInput = document.getElementById('fileInput');
-const indexBtn  = document.getElementById('indexBtn');
+const fileInput  = document.getElementById('fileInput');
+const indexBtn   = document.getElementById('indexBtn');
 const uploadZone = document.getElementById('uploadZone');
 
 fileInput.addEventListener('change', () => {
   state.pendingFile = fileInput.files[0] || null;
   indexBtn.disabled = !state.pendingFile;
   if (state.pendingFile) {
-    document.querySelector('.upload-text').innerHTML =
-      `<strong>${state.pendingFile.name}</strong>Ready to index`;
+    document.querySelector('.upload-text').innerHTML = `<strong>${escHtml(state.pendingFile.name)}</strong>Ready to index`;
   }
 });
 
@@ -565,8 +680,10 @@ uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag
 uploadZone.addEventListener('drop', e => {
   e.preventDefault(); uploadZone.classList.remove('drag');
   const f = e.dataTransfer.files[0];
-  if (f) { state.pendingFile = f; indexBtn.disabled = false;
-    document.querySelector('.upload-text').innerHTML = `<strong>${f.name}</strong>Ready to index`; }
+  if (f) {
+    state.pendingFile = f; indexBtn.disabled = false;
+    document.querySelector('.upload-text').innerHTML = `<strong>${escHtml(f.name)}</strong>Ready to index`;
+  }
 });
 
 indexBtn.addEventListener('click', async () => {
@@ -586,14 +703,15 @@ indexBtn.addEventListener('click', async () => {
     await loadDocs();
     selectDoc(data.doc_name);
   } catch(e) {
-    toast(e.message, 'error');
+    const errEl = document.querySelector('.upload-zone') || document.body;
+    showErrorBanner(document.querySelector('.sidebar'), e.type === 'network' ? 'network' : e.status, e.message);
   } finally {
     label.textContent = 'Index Document';
     indexBtn.disabled = false;
   }
 });
 
-// ── Select / delete doc ───────────────────────────────────────────────────────
+// ── Select / Delete ───────────────────────────────────────────────────────────
 function selectDoc(name) {
   state.activeDoc = name;
   state.chatHistory = [];
@@ -614,9 +732,13 @@ async function deleteDoc(e, name) {
       updateChatHeader();
       document.getElementById('chatInput').disabled = true;
       document.getElementById('sendBtn').disabled = true;
+      state.chatHistory = [];
+      renderMessages();
     }
     await loadDocs();
-  } catch(e) { toast(e.message, 'error'); }
+  } catch(e) {
+    showErrorBanner(document.getElementById('docList'), e.type === 'network' ? 'network' : e.status, e.message);
+  }
 }
 
 function updateChatHeader() {
@@ -624,7 +746,7 @@ function updateChatHeader() {
   if (state.activeDoc) {
     const doc = state.docs.find(d => d.doc_name === state.activeDoc) || {};
     badge.className = 'chat-doc-badge';
-    badge.innerHTML = `<div class="dot"></div><div class="name">${doc.company_name || state.activeDoc}</div>`;
+    badge.innerHTML = `<div class="dot"></div><div class="name">${escHtml(doc.company_name || state.activeDoc)}</div>`;
   } else {
     badge.className = 'chat-placeholder';
     badge.textContent = 'Select a document to start chatting';
@@ -647,12 +769,13 @@ sendBtn.addEventListener('click', sendMessage);
 async function sendMessage() {
   const q = chatInput.value.trim();
   if (!q || !state.activeDoc) return;
+  if (q.length > 1000) {
+    toast('Question is too long (max 1000 characters).', 'error');
+    return;
+  }
   chatInput.value = ''; chatInput.style.height = 'auto';
 
   state.chatHistory.push({ role: 'user', text: q, chunks: [] });
-  renderMessages();
-
-  // Typing indicator
   const typingId = 'typing-' + Date.now();
   state.chatHistory.push({ role: 'typing', id: typingId });
   renderMessages();
@@ -665,17 +788,141 @@ async function sendMessage() {
     });
     const data = await res.json();
     state.chatHistory = state.chatHistory.filter(m => m.id !== typingId);
-    state.chatHistory.push({ role: 'assistant', text: data.answer, chunks: data.chunks_used || [] });
+    state.chatHistory.push({
+      role: 'assistant',
+      text: data.answer,
+      chunks: data.chunks_used || [],
+      answerId: data.answer_id,
+      query: q,
+      vote: null,    // null | 'up' | 'down'
+      retried: false,
+    });
   } catch(e) {
     state.chatHistory = state.chatHistory.filter(m => m.id !== typingId);
-    state.chatHistory.push({ role: 'assistant', text: `Error: ${e.message}`, chunks: [] });
+    const errInfo = getErrorInfo(e.type === 'network' ? 'network' : e.status, e.message);
+    state.chatHistory.push({
+      role: 'error',
+      title: errInfo.title,
+      detail: errInfo.detail,
+      retryFn: e.status !== 401 && e.status !== 403 ? () => {
+        chatInput.value = q;
+        sendMessage();
+      } : null,
+    });
   }
   renderMessages();
 }
 
+// ── Feedback modal ────────────────────────────────────────────────────────────
+function openFeedbackModal(msgIndex, answerId, query, docName, prevAnswer) {
+  _feedbackCtx = { msgIndex, answerId, query, docName, prevAnswer };
+  document.getElementById('feedbackComment').value = '';
+  document.getElementById('feedbackCharCount').textContent = '0 / 500';
+  document.getElementById('feedbackModal').style.display = 'flex';
+  document.getElementById('feedbackComment').focus();
+}
+
+function closeFeedbackModal(e) {
+  if (e && e.target !== document.getElementById('feedbackModal')) return;
+  document.getElementById('feedbackModal').style.display = 'none';
+  _feedbackCtx = null;
+}
+
+document.getElementById('feedbackComment').addEventListener('input', function() {
+  document.getElementById('feedbackCharCount').textContent = `${this.value.length} / 500`;
+});
+
+async function submitFeedback() {
+  if (!_feedbackCtx) return;
+  const { msgIndex, answerId, query, docName, prevAnswer } = _feedbackCtx;
+  const comment = document.getElementById('feedbackComment').value.trim();
+  const submitBtn = document.getElementById('feedbackSubmitBtn');
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Sending…';
+
+  // Mark message as voted down optimistically
+  if (state.chatHistory[msgIndex]) {
+    state.chatHistory[msgIndex].vote = 'down';
+  }
+  renderMessages();
+  document.getElementById('feedbackModal').style.display = 'none';
+
+  // Insert a typing indicator for the retry
+  const typingId = 'retry-' + Date.now();
+  state.chatHistory.splice(msgIndex + 1, 0, { role: 'typing', id: typingId, label: 'Generating improved answer…' });
+  renderMessages();
+
+  try {
+    const res = await apiFetch('/feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        answer_id: answerId,
+        query,
+        doc_name: docName,
+        vote: 'down',
+        comment: comment || null,
+        previous_answer: prevAnswer,
+      }),
+    });
+    const data = await res.json();
+    state.chatHistory = state.chatHistory.filter(m => m.id !== typingId);
+    if (data.improved_answer) {
+      state.chatHistory.splice(msgIndex + 1, 0, {
+        role: 'assistant',
+        text: data.improved_answer,
+        chunks: data.chunks_used || [],
+        answerId: data.answer_id,
+        query,
+        vote: null,
+        retried: true,
+      });
+      toast('Improved answer generated!', 'success');
+    }
+  } catch(e) {
+    state.chatHistory = state.chatHistory.filter(m => m.id !== typingId);
+    const errInfo = getErrorInfo(e.type === 'network' ? 'network' : e.status, e.message);
+    toast(`${errInfo.title}: ${errInfo.detail}`, 'error');
+    // Revert the vote marker so they can try again
+    if (state.chatHistory[msgIndex]) state.chatHistory[msgIndex].vote = null;
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Submit & retry';
+    _feedbackCtx = null;
+  }
+  renderMessages();
+}
+
+async function submitUpvote(msgIndex) {
+  const msg = state.chatHistory[msgIndex];
+  if (!msg || msg.vote) return;
+  msg.vote = 'up';
+  renderMessages();
+  try {
+    await apiFetch('/feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        answer_id: msg.answerId,
+        query: msg.query,
+        doc_name: state.activeDoc,
+        vote: 'up',
+        comment: null,
+        previous_answer: msg.text,
+      }),
+    });
+    toast('Thanks for the feedback!', 'success');
+  } catch(e) {
+    msg.vote = null;
+    renderMessages();
+    toast('Could not send feedback — please try again.', 'error');
+  }
+}
+
+// ── Render messages ───────────────────────────────────────────────────────────
 function renderMessages() {
-  const empty   = document.getElementById('chatEmpty');
-  const msgsEl  = document.getElementById('messages');
+  const empty  = document.getElementById('chatEmpty');
+  const msgsEl = document.getElementById('messages');
 
   if (!state.chatHistory.length) {
     empty.style.display = 'flex'; msgsEl.style.display = 'none'; return;
@@ -687,7 +934,7 @@ function renderMessages() {
       <div class="msg assistant">
         <div class="msg-avatar">🤖</div>
         <div class="msg-body">
-          <div class="msg-role">FinDoc</div>
+          <div class="msg-role">FinDoc${m.label ? ' · ' + m.label : ''}</div>
           <div class="typing-dots"><span></span><span></span><span></span></div>
         </div>
       </div>`;
@@ -701,7 +948,29 @@ function renderMessages() {
         </div>
       </div>`;
 
-    const chunksHtml = m.chunks.length ? `
+    if (m.role === 'error') return `
+      <div class="msg assistant">
+        <div class="msg-avatar">⚠</div>
+        <div class="msg-body">
+          <div class="msg-role">Error</div>
+          <div class="error-banner" style="margin:4px 0 0">
+            <span class="err-icon">⚠</span>
+            <div class="err-body">
+              <div class="err-title">${escHtml(m.title)}</div>
+              <div class="err-detail">${escHtml(m.detail)}</div>
+              ${m.retryFn ? `<span class="err-action" onclick="(${m.retryFn.toString()})()">Retry question</span>` : ''}
+            </div>
+          </div>
+        </div>
+      </div>`;
+
+    // Assistant answer
+    const upActive   = m.vote === 'up'   ? 'active' : '';
+    const downActive = m.vote === 'down' ? 'active' : '';
+    const voted      = m.vote !== null;
+    const retriedBadge = m.retried ? '<span class="retry-badge">↻ improved</span>' : '';
+
+    const chunksHtml = m.chunks && m.chunks.length ? `
       <div class="chunks-toggle" onclick="toggleChunks(this)" id="ct-${i}">
         <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5">
           <path d="M2 4l4 4 4-4"/>
@@ -712,7 +981,7 @@ function renderMessages() {
         ${m.chunks.map(c => `
           <div class="chunk-card">
             <div class="chunk-card-head">
-              ${c.section_hint ? `<span class="chunk-section">${c.section_hint}</span>` : ''}
+              ${c.section_hint ? `<span class="chunk-section">${escHtml(c.section_hint)}</span>` : ''}
               <div class="chunk-score-wrap">
                 <div class="chunk-bar"><div class="chunk-bar-fill" style="width:${Math.round(c.score*100)}%"></div></div>
                 <span class="chunk-score-val">${Math.round(c.score*100)}%</span>
@@ -726,9 +995,18 @@ function renderMessages() {
       <div class="msg assistant">
         <div class="msg-avatar">🤖</div>
         <div class="msg-body">
-          <div class="msg-role">FinDoc</div>
+          <div class="msg-role">FinDoc ${retriedBadge}</div>
           <div class="msg-text">${escHtml(m.text)}</div>
           ${chunksHtml}
+          <div class="feedback-row">
+            <button class="vote-btn up ${upActive}" ${voted ? 'disabled' : ''} onclick="submitUpvote(${i})" title="This answer was helpful">
+              <span>▲</span> Helpful
+            </button>
+            <button class="vote-btn down ${downActive}" ${voted ? 'disabled' : ''} onclick="openFeedbackModal(${i}, '${m.answerId}', ${JSON.stringify(m.query)}, '${escHtml(state.activeDoc)}', ${JSON.stringify(m.text)})" title="This answer needs improvement">
+              <span>▼</span> Improve
+            </button>
+            ${voted && !m.retried ? '<span class="feedback-label">Thanks for your feedback</span>' : ''}
+          </div>
         </div>
       </div>`;
   }).join('');
@@ -743,10 +1021,6 @@ function toggleChunks(el) {
   list.classList.toggle('open');
 }
 
-function escHtml(s) {
-  return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
 // ── Documents tab ─────────────────────────────────────────────────────────────
 async function renderDocsTab() {
   const el = document.getElementById('docsScroll');
@@ -755,18 +1029,24 @@ async function renderDocsTab() {
     return;
   }
 
-  // Fetch full metadata for each doc
+  el.innerHTML = '<div style="padding:20px;color:var(--muted);font-size:13px">Loading metadata…</div>';
+
   const metas = await Promise.all(state.docs.map(d =>
     apiFetch(`/documents/${encodeURIComponent(d.doc_name)}/metadata`)
-      .then(r => r.json()).catch(() => ({}))
+      .then(r => r.json())
+      .catch(e => ({ _error: e.message || 'Failed to load metadata' }))
   ));
 
-  el.innerHTML = metas.map((meta, i) => {
-    const doc = state.docs[i];
-    const fin = meta.financials || {};
-    const finKeys = Object.keys(fin).filter(k => fin[k]);
+  el.innerHTML = metas.map((meta, idx) => {
+    const doc = state.docs[idx];
+    if (meta._error) return `
+      <div class="doc-card">
+        <div class="doc-card-head"><div><div class="doc-card-title">${escHtml(doc.doc_name)}</div>
+        <div style="color:var(--red);font-size:12px;margin-top:4px">⚠ ${escHtml(meta._error)}</div></div></div>
+      </div>`;
 
-    const finGrid = finKeys.length ? `
+    const fin = meta.financials || {};
+    const finGrid = Object.keys(fin).length ? `
       <div class="fin-grid">
         ${Object.entries(fin).map(([k, v]) => `
           <div class="fin-cell">
@@ -783,17 +1063,13 @@ async function renderDocsTab() {
             <div class="doc-card-title">${escHtml(meta.company_name || doc.doc_name)}</div>
             <div class="doc-card-sub">
               ${docTypeBadge(meta.doc_type, doc.doc_name)}
-              ${meta.fiscal_year ? `<span class="badge badge-other">${meta.fiscal_year}</span>` : ''}
-              &nbsp;${doc.doc_name} · ${doc.chunk_count || '?'} chunks
+              ${meta.fiscal_year ? `<span class="badge badge-other">${escHtml(meta.fiscal_year)}</span>` : ''}
+              &nbsp;${escHtml(doc.doc_name)} · ${doc.chunk_count || '?'} chunks
             </div>
           </div>
           <div class="doc-card-actions">
-            <a class="btn-dl" href="/documents/${base}/metadata/download/json" download>
-              ⬇ JSON
-            </a>
-            <a class="btn-dl" href="/documents/${base}/metadata/download/csv" download>
-              ⬇ CSV
-            </a>
+            <a class="btn-dl" href="/documents/${base}/metadata/download/json" download>⬇ JSON</a>
+            <a class="btn-dl" href="/documents/${base}/metadata/download/csv" download>⬇ CSV</a>
           </div>
         </div>
         ${meta.summary ? `<div class="doc-summary">${escHtml(meta.summary)}</div>` : ''}
@@ -807,7 +1083,7 @@ async function renderDocsTab() {
 function renderChunkDocSelect() {
   const sel = document.getElementById('chunkDocSelect');
   sel.innerHTML = '<option value="">— Select document —</option>' +
-    state.docs.map(d => `<option value="${d.doc_name}">${d.company_name || d.doc_name}</option>`).join('');
+    state.docs.map(d => `<option value="${escHtml(d.doc_name)}">${escHtml(d.company_name || d.doc_name)}</option>`).join('');
 }
 
 document.getElementById('chunkDocSelect').addEventListener('change', loadChunks);
@@ -823,15 +1099,23 @@ async function loadChunks() {
     const res = await apiFetch(`/documents/${encodeURIComponent(doc)}/chunks`);
     const data = await res.json();
     allChunks = data.chunks || [];
-
-    // Populate section filter
     const sections = [...new Set(allChunks.map(c => c.section_hint).filter(Boolean))].sort();
     const secSel = document.getElementById('chunkSectionFilter');
     secSel.innerHTML = '<option value="">All sections</option>' +
-      sections.map(s => `<option value="${s}">${s}</option>`).join('');
-
+      sections.map(s => `<option value="${escHtml(s)}">${escHtml(s)}</option>`).join('');
     renderChunks(allChunks);
-  } catch(e) { scroll.innerHTML = `<div style="color:var(--red);padding:20px">${e.message}</div>`; }
+  } catch(e) {
+    const info = getErrorInfo(e.type === 'network' ? 'network' : e.status, e.message);
+    scroll.innerHTML = `<div style="padding:20px">
+      <div class="error-banner">
+        <span class="err-icon">⚠</span>
+        <div class="err-body">
+          <div class="err-title">${info.title}</div>
+          <div class="err-detail">${info.detail}</div>
+        </div>
+      </div>
+    </div>`;
+  }
 }
 
 function filterChunks() {
@@ -842,18 +1126,19 @@ function filterChunks() {
 function renderChunks(chunks) {
   document.getElementById('chunksCount').textContent = `${chunks.length} chunks`;
   const scroll = document.getElementById('chunksScroll');
-  if (!chunks.length) { scroll.innerHTML = '<div style="color:var(--muted);padding:20px;font-size:13px">No chunks found.</div>'; return; }
+  if (!chunks.length) {
+    scroll.innerHTML = '<div style="color:var(--muted);padding:20px;font-size:13px">No chunks found.</div>';
+    return;
+  }
   scroll.innerHTML = chunks.map(c => `
     <div class="chunk-row" id="chunk-${c.chunk_index}">
       <div class="chunk-row-head" onclick="toggleChunkRow(${c.chunk_index})">
         <span class="chunk-idx">#${c.chunk_index}</span>
-        ${c.section_hint ? `<span class="chunk-sec-pill">${c.section_hint}</span>` : ''}
+        ${c.section_hint ? `<span class="chunk-sec-pill">${escHtml(c.section_hint)}</span>` : ''}
         <span class="chunk-chars">${c.char_start}–${c.char_end}</span>
         <span class="chunk-chevron">▾</span>
       </div>
-      <div class="chunk-body">
-        <pre>${escHtml(c.text)}</pre>
-      </div>
+      <div class="chunk-body"><pre>${escHtml(c.text)}</pre></div>
     </div>`).join('');
 }
 
@@ -872,8 +1157,28 @@ document.querySelectorAll('.tab').forEach(tab => {
   });
 });
 
+// Escape key closes modal
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') document.getElementById('feedbackModal').style.display = 'none';
+});
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 loadDocs();
 </script>
+
+<!-- ── Feedback Modal ── -->
+<div class="modal-backdrop" id="feedbackModal" style="display:none" onclick="closeFeedbackModal(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-title">Help us improve this answer</div>
+    <div class="modal-sub">What was wrong or missing? Your feedback will be used to generate a better response.</div>
+    <textarea class="modal-textarea" id="feedbackComment" placeholder="Optional: describe what was wrong or what you expected…" maxlength="500"></textarea>
+    <div id="feedbackCharCount" style="font-size:11px;color:var(--muted);text-align:right;margin-top:4px">0 / 500</div>
+    <div class="modal-actions">
+      <button class="btn-sm btn-sm-cancel" onclick="closeFeedbackModal()">Cancel</button>
+      <button class="btn-sm btn-sm-submit" id="feedbackSubmitBtn" onclick="submitFeedback()">Submit & retry</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
