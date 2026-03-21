@@ -1,7 +1,7 @@
 import os
 
 # Groq config
-GROQ_API_KEY = "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"
+GROQ_API_KEY = "api-key-here"
 GROQ_MODEL = "llama-3.3-70b-versatile"
 
 # ChromaDB
