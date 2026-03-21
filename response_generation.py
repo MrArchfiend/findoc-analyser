@@ -1,9 +1,12 @@
+import time
+import logging
 from groq import Groq
 from constants import GROQ_API_KEY, GROQ_MODEL, TOP_K_TO_LLM
 
+logger = logging.getLogger("findoc.response_generation")
+
 
 def _get_client() -> Groq:
-    """Lazy client construction — raises clearly if API key is missing."""
     if not GROQ_API_KEY:
         raise RuntimeError(
             "GROQ_API_KEY is not set. Export it as an environment variable: "
@@ -12,27 +15,27 @@ def _get_client() -> Groq:
     return Groq(api_key=GROQ_API_KEY)
 
 
-def generate_response(query: str, retrieved_chunks: list) -> tuple[str, list]:
+def generate_response(
+    query: str,
+    retrieved_chunks: list,
+    doc_name: str | None = None,
+) -> tuple[str, list]:
     """
     Select top TOP_K_TO_LLM chunks and generate an answer.
-
-    Args:
-        query: original user question
-        retrieved_chunks: list of RetrievedChunk (already sorted by score desc)
-
-    Returns:
-        (answer_text, scored_chunks_sent_to_llm)
-        scored_chunks_sent_to_llm is a list of dicts with keys: text, score, section_hint
+    Returns (answer_text, scored_chunks_sent_to_llm).
     """
+    from monitoring import record_llm_call, record_error
+
     top_chunks = retrieved_chunks[:TOP_K_TO_LLM]
-    context = "\n\n".join(rc.text for rc in top_chunks)
+    # Truncate each chunk to avoid Groq context length limits
+    context    = "\n\n".join(rc.text[:800] for rc in top_chunks)
 
     scored_chunks = [
         {
-            "text": rc.text,
-            "score": round(rc.score, 4),
+            "text":         rc.text,
+            "score":        round(rc.score, 4),
             "section_hint": rc.section_hint,
-            "chunk_index": rc.chunk_index,
+            "chunk_index":  rc.chunk_index,
         }
         for rc in top_chunks
     ]
@@ -46,6 +49,7 @@ Context:
 Question: {query}
 Answer:"""
 
+    start = time.time()
     try:
         client = _get_client()
         response = client.chat.completions.create(
@@ -53,11 +57,35 @@ Answer:"""
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3,
         )
+        latency_ms = (time.time() - start) * 1000
+        usage = response.usage
+
+        record_llm_call(
+            call_type="response",
+            model=GROQ_MODEL,
+            latency_ms=latency_ms,
+            prompt_tokens=usage.prompt_tokens if usage else 0,
+            completion_tokens=usage.completion_tokens if usage else 0,
+            doc_name=doc_name,
+            success=True,
+        )
+
         return response.choices[0].message.content.strip(), scored_chunks
 
     except Exception as e:
-        print(f"Response generation failed: {e}")
-        return "Sorry, I was unable to generate a response. Please check your GROQ_API_KEY.", scored_chunks
+        latency_ms = (time.time() - start) * 1000
+        record_llm_call(
+            call_type="response",
+            model=GROQ_MODEL,
+            latency_ms=latency_ms,
+            prompt_tokens=0,
+            completion_tokens=0,
+            doc_name=doc_name,
+            success=False,
+        )
+        record_error("response_generation", type(e).__name__, str(e), doc_name)
+        logger.warning("Response generation failed: %s", e)
+        return f"Sorry, I was unable to generate a response. Error: {type(e).__name__}: {str(e)[:200]}", scored_chunks
 
 
 def generate_response_with_feedback(
@@ -65,20 +93,21 @@ def generate_response_with_feedback(
     retrieved_chunks: list,
     previous_answer: str,
     feedback_comment: str = "",
+    doc_name: str | None = None,
 ) -> tuple[str, list]:
-    """
-    Regenerate an answer using the previous answer and user feedback as context.
-    Called when a user downvotes an answer.
-    """
+    """Regenerate an answer using the previous answer and user feedback as context."""
+    from monitoring import record_llm_call, record_error
+
     top_chunks = retrieved_chunks[:TOP_K_TO_LLM]
-    context = "\n\n".join(rc.text for rc in top_chunks)
+    # Truncate each chunk to avoid Groq context length limits
+    context    = "\n\n".join(rc.text[:800] for rc in top_chunks)
 
     scored_chunks = [
         {
-            "text": rc.text,
-            "score": round(rc.score, 4),
+            "text":         rc.text,
+            "score":        round(rc.score, 4),
             "section_hint": rc.section_hint,
-            "chunk_index": rc.chunk_index,
+            "chunk_index":  rc.chunk_index,
         }
         for rc in top_chunks
     ]
@@ -103,15 +132,39 @@ Question: {query}
 
 Improved answer (be more specific, structured, and thorough than the previous answer):"""
 
+    start = time.time()
     try:
         client = _get_client()
         response = client.chat.completions.create(
             model=GROQ_MODEL,
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.2,  # slightly lower temp for more focused retry
+            temperature=0.2,
         )
+        latency_ms = (time.time() - start) * 1000
+        usage = response.usage
+
+        record_llm_call(
+            call_type="feedback_response",
+            model=GROQ_MODEL,
+            latency_ms=latency_ms,
+            prompt_tokens=usage.prompt_tokens if usage else 0,
+            completion_tokens=usage.completion_tokens if usage else 0,
+            doc_name=doc_name,
+            success=True,
+        )
+
         return response.choices[0].message.content.strip(), scored_chunks
 
     except Exception as e:
-        print(f"Feedback response generation failed: {e}")
+        latency_ms = (time.time() - start) * 1000
+        record_llm_call(
+            call_type="feedback_response",
+            model=GROQ_MODEL,
+            latency_ms=latency_ms,
+            prompt_tokens=0,
+            completion_tokens=0,
+            doc_name=doc_name,
+            success=False,
+        )
+        record_error("response_generation", type(e).__name__, str(e), doc_name)
         raise

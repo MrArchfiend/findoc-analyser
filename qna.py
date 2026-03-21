@@ -1,9 +1,13 @@
+import logging
+
 from data_preprocessing import preprocess_data
 from chunking import ParagraphAwareChunker
 from storing_retrieval import VectorStore
 from question_generation import generate_subquestions
 from response_generation import generate_response
 from metadata_extraction import extract_document_metadata
+
+logger = logging.getLogger("findoc.qna")
 
 store = VectorStore()
 chunker = ParagraphAwareChunker()
@@ -18,15 +22,33 @@ def index_document(uploaded_file) -> str:
 
     text = preprocess_data(uploaded_file)
     chunks = chunker.chunk(text)
+
+    if not chunks:
+        raise ValueError(f"No text could be extracted from '{doc_name}'.")
+
     store.add_chunks(chunks, doc_name)
 
-    metadata = extract_document_metadata(text, chunks=chunks)
+    try:
+        metadata = extract_document_metadata(text, chunks=chunks)
+    except Exception as e:
+        logger.warning("Metadata extraction failed for '%s': %s — using fallback.", doc_name, e)
+        metadata = {
+            "company_name": None, "ticker": None, "doc_type": None,
+            "fiscal_year": None, "period_end_date": None,
+            "summary": "Metadata extraction failed.", "financials": {},
+        }
+
     metadata["doc_name"] = doc_name
     metadata["chunk_count"] = len(chunks)
     _metadata_cache[doc_name] = metadata
-    store.save_metadata(doc_name, metadata)
 
-    return f"'{doc_name}' indexed — {len(chunks)} chunks, company: {metadata.get('company_name') or 'unknown'}."
+    try:
+        store.save_metadata(doc_name, metadata)
+    except Exception as e:
+        logger.warning("Could not persist metadata for '%s': %s", doc_name, e)
+
+    company = metadata.get("company_name") or "unknown"
+    return f"'{doc_name}' indexed — {len(chunks)} chunks, company: {company}."
 
 
 def get_metadata(doc_name: str) -> dict:
@@ -45,17 +67,12 @@ def get_chunks(doc_name: str) -> list:
 def ask(query: str, doc_name: str) -> tuple[str, list]:
     """
     Returns (answer, scored_chunks_sent_to_llm).
-    scored_chunks is a list of dicts with text, score, section_hint, chunk_index.
+    doc_name is passed through to LLM call tracking.
     """
-    subquestions = generate_subquestions(query)
-    retrieved = store.batch_query(subquestions, doc_name=doc_name, top_k=10)
+    subquestions = generate_subquestions(query, doc_name=doc_name)
+    retrieved    = store.batch_query(subquestions, doc_name=doc_name, top_k=10)
 
     if not retrieved:
         return "No relevant information found in the document.", []
 
-    return generate_response(query, retrieved)
-
-
-def compare_documents(query: str, doc_names: list[str]) -> dict[str, tuple[str, list]]:
-    """Run ask() for each doc and return {doc_name: (answer, scored_chunks)}."""
-    return {doc: ask(query, doc_name=doc) for doc in doc_names}
+    return generate_response(query, retrieved, doc_name=doc_name)

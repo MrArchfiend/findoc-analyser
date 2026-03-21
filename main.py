@@ -14,6 +14,7 @@ Security layers implemented:
 """
 
 import csv
+import time
 import html
 import io
 import json
@@ -33,8 +34,11 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from qna import ask, get_chunks, get_metadata, index_document, store
+from monitoring import record_request, record_error, get_metrics_summary, setup_logging
+from evaluation import evaluate_async
 
 logger = logging.getLogger("findoc")
+setup_logging(os.environ.get("LOG_LEVEL", "INFO"))
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 # Set API_KEY env var in production. Falls back to a generated key logged at startup.
@@ -89,11 +93,27 @@ async def add_security_headers(request: Request, call_next):
     response.headers["Permissions-Policy"]        = "geolocation=(), microphone=(), camera=()"
     response.headers["Content-Security-Policy"]   = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline'; "   # needed for inline JS in index.html
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdn.jsdelivr.net; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.tailwindcss.com; "
         "font-src https://fonts.gstatic.com; "
         "img-src 'self' data:; "
-        "connect-src 'self';"
+        "connect-src 'self' https://cdn.tailwindcss.com;"
+    )
+    return response
+
+
+@app.middleware("http")
+async def track_requests(request: Request, call_next):
+    start = time.time()
+    response = await call_next(request)
+    latency_ms = (time.time() - start) * 1000
+    doc_name = request.path_params.get("doc_name")
+    record_request(
+        method=request.method,
+        path=request.url.path,
+        status_code=response.status_code,
+        latency_ms=latency_ms,
+        doc_name=doc_name,
     )
     return response
 
@@ -376,12 +396,22 @@ async def ask_question(request: Request, body: AskRequest):
     except Exception as e:
         logger.exception("Q&A failed for doc=%s query=%s", doc_name, body.query)
         raise HTTPException(status_code=500, detail="Failed to generate answer. Check server logs.")
+    answer_id = secrets.token_hex(16)
+    # Fire RAGAS evaluation asynchronously — does not delay the response
+    contexts = [c["text"] for c in scored_chunks if c.get("text")]
+    evaluate_async(
+        answer_id=answer_id,
+        doc_name=doc_name,
+        query=body.query,
+        answer=answer,
+        contexts=contexts,
+    )
     return AskResponse(
         query=body.query,
         doc_name=doc_name,
         answer=answer,
         chunks_used=scored_chunks,
-        answer_id=secrets.token_hex(16),
+        answer_id=answer_id,
     )
 
 # ── Feedback ───────────────────────────────────────────────────────────────────
@@ -452,3 +482,35 @@ async def submit_feedback(request: Request, body: FeedbackRequest):
 @limiter.limit("10/minute")
 async def get_feedback(request: Request):
     return {"total": len(_feedback_log), "feedback": _feedback_log}
+
+# ── Monitoring ─────────────────────────────────────────────────────────────────
+
+@app.get("/metrics", summary="Request, LLM, and RAGAS metrics (24h rolling window)", dependencies=[AuthDep])
+@limiter.limit("30/minute")
+async def get_metrics(request: Request):
+    return get_metrics_summary()
+
+
+@app.get("/metrics/quality", summary="RAGAS quality scores per document", dependencies=[AuthDep])
+@limiter.limit("30/minute")
+async def get_quality_metrics(request: Request):
+    summary = get_metrics_summary()
+    ragas = summary["ragas"]
+    return {
+        "overall": {
+            "total_evaluations":       ragas["total_evaluations"],
+            "successful":              ragas["successful"],
+            "avg_faithfulness":        ragas["avg_faithfulness"],
+            "avg_answer_relevancy":    ragas["avg_answer_relevancy"],
+            "avg_context_precision":   ragas["avg_context_precision"],
+            "avg_context_recall":      ragas["avg_context_recall"],
+        },
+        "by_document": ragas["by_document"],
+    }
+
+
+@app.get("/metrics/llm", summary="LLM call stats and token usage (24h rolling window)", dependencies=[AuthDep])
+@limiter.limit("30/minute")
+async def get_llm_metrics(request: Request):
+    summary = get_metrics_summary()
+    return summary["llm"]

@@ -21,3 +21,9 @@ fastapi>=0.115.0             # Web framework
 uvicorn[standard]>=0.34.0   # ASGI server
 python-multipart>=0.0.20    # Required for FastAPI file uploads
 slowapi>=0.1.9               # Rate limiting middleware for FastAPI
+
+# ── Monitoring & evaluation ───────────────────────────────────────────────────
+ragas>=0.1.21                # RAG evaluation framework (faithfulness, relevancy, etc.)
+langchain-groq>=0.1.9        # Groq LangChain integration (RAGAS judge LLM)
+langchain-community>=0.2.0   # HuggingFaceEmbeddings for RAGAS
+datasets>=2.20.0             # Required by RAGAS for Dataset.from_dict()
