@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
+import os
 from typing import Optional
 
 import chromadb
@@ -22,11 +24,11 @@ try:
     from constants import (
         CHROMA_PERSIST_DIR,
         CHROMA_COLLECTION_NAME,
-        EMBEDDING_BACKEND,       # "ollama" | "sentence-transformers"
-        OLLAMA_EMBED_MODEL,      # e.g. "nomic-embed-text"
+        EMBEDDING_BACKEND,  # "ollama" | "sentence-transformers"
+        OLLAMA_EMBED_MODEL,  # e.g. "nomic-embed-text"
         SENTENCE_TRANSFORMER_MODEL,  # e.g. "all-MiniLM-L6-v2"
-        OLLAMA_BASE_URL,         # e.g. "http://localhost:11434"
-        TOP_K_RESULTS,           # default number of chunks to retrieve
+        OLLAMA_BASE_URL,  # e.g. "http://localhost:11434"
+        TOP_K_RESULTS,  # default number of chunks to retrieve
     )
 except ImportError:
     CHROMA_PERSIST_DIR = "./chromadb"
@@ -75,10 +77,10 @@ class VectorStore:
     """
 
     def __init__(
-        self,
-        persist_dir: str = CHROMA_PERSIST_DIR,
-        collection_name: str = CHROMA_COLLECTION_NAME,
-        embedding_backend: str = EMBEDDING_BACKEND,
+            self,
+            persist_dir: str = CHROMA_PERSIST_DIR,
+            collection_name: str = CHROMA_COLLECTION_NAME,
+            embedding_backend: str = EMBEDDING_BACKEND,
     ) -> None:
         self._client = chromadb.PersistentClient(
             path=persist_dir,
@@ -88,8 +90,10 @@ class VectorStore:
         self._collection = self._client.get_or_create_collection(
             name=collection_name,
             embedding_function=self._embed_fn,
-            metadata={"hnsw:space": "cosine"},   # cosine similarity
+            metadata={"hnsw:space": "cosine"},  # cosine similarity
         )
+        self._meta_dir = os.path.join(persist_dir, "metadata")
+        os.makedirs(self._meta_dir, exist_ok=True)
         logger.info(
             "VectorStore ready — collection=%r  backend=%r  persist_dir=%r",
             collection_name, embedding_backend, persist_dir,
@@ -98,13 +102,13 @@ class VectorStore:
     # ------------------------------------------------------------------
     # Metadata persistence (simple JSON files per document)
     # ------------------------------------------------------------------
- 
+
     def save_metadata(self, doc_name: str, metadata: dict) -> None:
         safe = doc_name.replace("/", "_").replace("\\", "_")
         path = os.path.join(self._meta_dir, f"{safe}.json")
         with open(path, "w") as f:
             json.dump(metadata, f, indent=2)
- 
+
     def load_metadata(self, doc_name: str) -> Optional[dict]:
         safe = doc_name.replace("/", "_").replace("\\", "_")
         path = os.path.join(self._meta_dir, f"{safe}.json")
@@ -112,7 +116,7 @@ class VectorStore:
             return None
         with open(path) as f:
             return json.load(f)
- 
+
     def list_metadata(self) -> dict[str, dict]:
         result = {}
         for fname in os.listdir(self._meta_dir):
@@ -121,7 +125,6 @@ class VectorStore:
                     data = json.load(f)
                     result[data.get("doc_name", fname)] = data
         return result
-    
 
     # ------------------------------------------------------------------
     # Indexing
@@ -149,11 +152,11 @@ class VectorStore:
             ids.append(_chunk_id(chunk, doc_name))
             documents.append(chunk.text)
             metadatas.append({
-                "doc_name":     doc_name,
-                "chunk_index":  chunk.chunk_index,
-                "method":       chunk.method,
-                "char_start":   chunk.char_start,
-                "char_end":     chunk.char_end,
+                "doc_name": doc_name,
+                "chunk_index": chunk.chunk_index,
+                "method": chunk.method,
+                "char_start": chunk.char_start,
+                "char_end": chunk.char_end,
                 "section_hint": chunk.section_hint or "",
                 # Flatten any caller-supplied extras (must be str/int/float/bool).
                 **{k: str(v) for k, v in chunk.extra.items()},
@@ -172,11 +175,11 @@ class VectorStore:
     # ------------------------------------------------------------------
 
     def query(
-        self,
-        query_text: str,
-        top_k: int = TOP_K_RESULTS,
-        doc_name: Optional[str] = None,
-        section_hint: Optional[str] = None,
+            self,
+            query_text: str,
+            top_k: int = TOP_K_RESULTS,
+            doc_name: Optional[str] = None,
+            section_hint: Optional[str] = None,
     ) -> list[RetrievedChunk]:
         """
         Retrieve the most relevant chunks for a natural-language query.
@@ -209,13 +212,13 @@ class VectorStore:
 
         retrieved: list[RetrievedChunk] = []
         for doc, meta, dist in zip(
-            results["documents"][0],
-            results["metadatas"][0],
-            results["distances"][0],
+                results["documents"][0],
+                results["metadatas"][0],
+                results["distances"][0],
         ):
             retrieved.append(RetrievedChunk(
                 text=doc,
-                score=1.0 - dist,          # cosine distance → similarity
+                score=1.0 - dist,  # cosine distance → similarity
                 doc_name=meta.get("doc_name", ""),
                 chunk_index=int(meta.get("chunk_index", -1)),
                 section_hint=meta.get("section_hint") or None,
@@ -227,12 +230,12 @@ class VectorStore:
         return retrieved
 
     def batch_query(
-        self,
-        queries: list[str],
-        top_k: int = TOP_K_RESULTS,
-        doc_name: Optional[str] = None,
-        section_hint: Optional[str] = None,
-        deduplicate: bool = True,
+            self,
+            queries: list[str],
+            top_k: int = TOP_K_RESULTS,
+            doc_name: Optional[str] = None,
+            section_hint: Optional[str] = None,
+            deduplicate: bool = True,
     ) -> list[RetrievedChunk]:
         """
         Run multiple sub-questions and merge results, optionally deduplicating
@@ -278,7 +281,7 @@ class VectorStore:
     # ------------------------------------------------------------------
     # Document management
     # ------------------------------------------------------------------
-    
+
     def list_documents(self) -> list[str]:
         """Return a sorted list of unique document names in the collection."""
         total = self._collection.count()
@@ -321,18 +324,17 @@ class VectorStore:
         return self._collection.count()
 
 
-
 # ---------------------------------------------------------------------------
 # Lightweight result dataclass returned by query methods
 # ---------------------------------------------------------------------------
-from dataclasses import dataclass   # noqa: E402  (after constants to avoid circular)
+from dataclasses import dataclass  # noqa: E402  (after constants to avoid circular)
 
 
 @dataclass
 class RetrievedChunk:
     """A chunk returned from similarity search, enriched with its relevance score."""
     text: str
-    score: float            # cosine similarity in [0, 1]; higher = more relevant
+    score: float  # cosine similarity in [0, 1]; higher = more relevant
     doc_name: str
     chunk_index: int
     section_hint: Optional[str]
@@ -347,4 +349,3 @@ class RetrievedChunk:
             f"section={self.section_hint!r}, "
             f"preview={preview!r})"
         )
-

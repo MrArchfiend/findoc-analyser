@@ -1,0 +1,953 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>FinDoc v2.0 — Financial Document Intelligence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@100..900&family=DM+Mono:wght@300;400;500&family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        "primary":                  "#33231D",
+        "primary-container":        "#4B3832",
+        "on-primary":               "#ffffff",
+        "secondary":                "#69596E",
+        "on-secondary-container":   "#6f5f75",
+        "surface":                  "#FCF9F4",
+        "surface-bright":           "#FCF9F4",
+        "surface-container-lowest": "#ffffff",
+        "surface-container-low":    "#F6F3EE",
+        "surface-container":        "#F0EDE8",
+        "surface-container-high":   "#EBE8E3",
+        "surface-container-highest":"#E5E2DD",
+        "on-surface":               "#1C1C19",
+        "on-surface-variant":       "#4F4441",
+        "outline":                  "#817471",
+        "outline-variant":          "#D3C3BF",
+        "error":                    "#BA1A1A",
+        "sage":                     "#4A6741",
+      },
+      fontFamily: {
+        "serif": ["Instrument Serif","serif"],
+        "sans":  ["Geist","sans-serif"],
+        "mono":  ["DM Mono","monospace"],
+      },
+      borderRadius: {
+        DEFAULT: "0.125rem",
+        "lg":    "0.25rem",
+        "xl":    "0.5rem",
+        "2xl":   "0.75rem",
+        "full":  "9999px",
+      },
+    }
+  }
+}
+</script>
+<style>
+  .material-symbols-outlined { font-variation-settings:'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 24; font-size:20px; }
+  body  { font-family:'Geist',sans-serif; }
+  h1,h2,h3,h4 { font-family:'Instrument Serif',serif; }
+  .data-mono { font-family:'DM Mono',monospace; }
+  .glass-nav { background:rgba(252,249,244,0.85); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); }
+  ::-webkit-scrollbar { width:4px; height:4px; }
+  ::-webkit-scrollbar-track { background:transparent; }
+  ::-webkit-scrollbar-thumb { background:#D3C3BF; border-radius:2px; }
+  .tab-active   { color:#33231D; border-bottom:2px solid #33231D; font-weight:600; }
+  .tab-inactive { color:#69596E; border-bottom:2px solid transparent; }
+  .tab-inactive:hover { color:#33231D; }
+  .nav-active   { color:#33231D; font-bold:700; background:rgba(240,237,232,0.5); border-right:3px solid #33231D; border-radius:0.25rem 0 0 0.25rem; }
+  .nav-inactive { color:#69596E; opacity:0.75; }
+  .nav-inactive:hover { background:#F0EDE8; opacity:1; }
+  .main-panel   { display:none; }
+  .main-panel.active { display:flex; flex-direction:column; flex:1; min-height:0; }
+
+  /* Markdown rendered output */
+  .md-body { line-height: 1.75; }
+  .md-body h1,.md-body h2,.md-body h3,.md-body h4 { font-family:'Instrument Serif',serif; color:#33231D; margin:1em 0 0.4em; }
+  .md-body h1 { font-size:1.4rem; } .md-body h2 { font-size:1.2rem; } .md-body h3 { font-size:1.05rem; }
+  .md-body p { margin:0.6em 0; }
+  .md-body ul,.md-body ol { padding-left:1.4em; margin:0.5em 0; }
+  .md-body li { margin:0.25em 0; }
+  .md-body code { font-family:'DM Mono',monospace; font-size:0.8em; background:#F0EDE8; padding:1px 5px; border-radius:3px; color:#4B3832; }
+  .md-body pre { background:#F0EDE8; border-radius:0.25rem; padding:12px 14px; overflow-x:auto; margin:0.75em 0; }
+  .md-body pre code { background:none; padding:0; font-size:0.78em; }
+  .md-body strong { font-weight:600; color:#33231D; }
+  .md-body em { font-style:italic; color:#4F4441; }
+  .md-body blockquote { border-left:3px solid #D3C3BF; margin:0.75em 0; padding:4px 14px; color:#69596E; }
+  .md-body table { border-collapse:collapse; width:100%; margin:0.75em 0; font-size:0.85em; }
+  .md-body th { background:#F0EDE8; font-family:'DM Mono',monospace; font-size:0.75em; text-transform:uppercase; letter-spacing:0.05em; padding:8px 12px; text-align:left; }
+  .md-body td { padding:7px 12px; border-bottom:1px solid rgba(211,195,191,0.3); }
+  .md-body a { color:#69596E; text-decoration:underline; }
+  .md-body hr { border:none; border-top:1px solid rgba(211,195,191,0.4); margin:1em 0; }
+
+  .score-bar-bg { background:#EBE8E3; border-radius:2px; height:4px; }
+  .score-bar-fill { background:#4A6741; border-radius:2px; height:4px; transition:width 0.6s ease; }
+  .chunk-body   { display:none; }
+  .chunk-row.open .chunk-body { display:block; }
+  .chunk-row.open .chunk-chevron { transform:rotate(180deg); }
+  .chunk-chevron { transition:transform 0.2s; }
+  .chat-chunk-card.open .chat-chunk-body { display:block; }
+  .chat-chunk-card.open .chunk-chevron  { transform:rotate(180deg); }
+  .chunks-toggle.open svg { transform:rotate(180deg); }
+  .chunks-list.open { display:flex; }
+  .chunks-list  { display:none; flex-direction:column; gap:6px; }
+  .typing-dots span { display:inline-block; width:5px; height:5px; border-radius:50%; background:#817471; margin:0 2px; animation:dot 1.2s infinite; }
+  .typing-dots span:nth-child(2) { animation-delay:0.2s; }
+  .typing-dots span:nth-child(3) { animation-delay:0.4s; }
+  @keyframes dot { 0%,80%,100%{transform:scale(1);opacity:0.4} 40%{transform:scale(1.3);opacity:1} }
+  @keyframes fadeUp { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
+  .msg-animate { animation:fadeUp 0.2s ease; }
+  .spinner { width:16px;height:16px;border:2px solid rgba(51,35,29,0.15);border-top-color:#33231D;border-radius:50%;animation:spin 0.6s linear infinite;display:inline-block; }
+  @keyframes spin { to{transform:rotate(360deg)} }
+  .toast-wrap { position:fixed;bottom:24px;right:24px;display:flex;flex-direction:column;gap:8px;z-index:9999; }
+  .toast { background:#FCF9F4;border:1px solid rgba(211,195,191,0.4);border-radius:0.25rem;padding:12px 16px;font-size:12px;display:flex;align-items:center;gap:10px;min-width:260px;box-shadow:0 10px 40px rgba(51,35,29,0.08);animation:fadeUp 0.2s ease; }
+  .toast-dot-success { background:#4A6741; }
+  .toast-dot-error   { background:#BA1A1A; }
+  .toast-dot-info    { background:#69596E; }
+  .vote-btn { display:flex;align-items:center;gap:4px;padding:4px 10px;border-radius:0.25rem;border:1px solid #D3C3BF;background:transparent;color:#817471;font-size:11px;cursor:pointer;font-family:'Geist',sans-serif;transition:all 0.15s; }
+  .vote-btn.up:hover,.vote-btn.up.active { border-color:#4A6741;color:#4A6741;background:rgba(74,103,65,0.06); }
+  .vote-btn.down:hover,.vote-btn.down.active { border-color:#BA1A1A;color:#BA1A1A;background:rgba(186,26,26,0.06); }
+  .vote-btn:disabled { opacity:0.4;cursor:not-allowed; }
+  .retry-badge { font-size:10px;font-family:'DM Mono',monospace;color:#69596E;background:#F0EDE8;border-radius:0.125rem;padding:1px 6px;margin-left:auto; }
+  .modal-backdrop { position:fixed;inset:0;background:rgba(28,28,25,0.3);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:1000;animation:fadeIn 0.15s ease; }
+  @keyframes fadeIn { from{opacity:0} to{opacity:1} }
+  .err-banner { background:rgba(186,26,26,0.06);border-left:3px solid #BA1A1A;border-radius:0.125rem;padding:10px 14px;font-size:12px;color:#BA1A1A;display:flex;align-items:flex-start;gap:10px;margin-bottom:8px; }
+  .err-banner .err-dismiss { cursor:pointer;color:#817471;font-size:16px;line-height:1;margin-left:auto; }
+  .metric-card { background:#ffffff;border:1px solid rgba(211,195,191,0.25);border-radius:0.25rem;padding:20px 24px;box-shadow:0 10px 40px rgba(51,35,29,0.04); }
+  .ragas-bar-bg { background:#EBE8E3;border-radius:2px;height:6px;flex:1; }
+  .ragas-bar-fill { border-radius:2px;height:6px;transition:width 0.8s ease; }
+  .ragas-good { background:#4A6741; }
+  .ragas-mid  { background:#C9A84C; }
+  .ragas-bad  { background:#BA1A1A; }
+</style>
+</head>
+<body class="bg-surface text-on-surface min-h-screen overflow-hidden">
+
+<!-- ── Left Sidebar ── -->
+<aside id="sidebar" class="fixed left-0 top-0 h-full w-[240px] bg-surface-container-low flex flex-col py-8 px-4 z-50">
+  <div class="mb-10 px-4">
+    <h1 class="font-serif text-2xl italic text-secondary">FinDoc</h1>
+    <p class="text-[10px] tracking-widest uppercase opacity-50 font-mono mt-1">v2.0</p>
+  </div>
+
+  <nav class="flex-1 space-y-1">
+    <a id="nav-chat"       class="nav-item flex items-center gap-3 px-4 py-3 rounded-lg transition-all cursor-pointer nav-inactive" onclick="switchNav('chat')">
+      <span class="material-symbols-outlined">chat</span>
+      <span class="text-sm font-medium">Chat</span>
+    </a>
+    <a id="nav-metadata"   class="nav-item flex items-center gap-3 px-4 py-3 rounded-lg transition-all cursor-pointer nav-active" onclick="switchNav('metadata')">
+      <span class="material-symbols-outlined">description</span>
+      <span class="text-sm font-medium">Documents</span>
+    </a>
+    <a id="nav-chunks"     class="nav-item flex items-center gap-3 px-4 py-3 rounded-lg transition-all cursor-pointer nav-inactive" onclick="switchNav('chunks')">
+      <span class="material-symbols-outlined">segment</span>
+      <span class="text-sm font-medium">Chunks</span>
+    </a>
+    <a id="nav-monitoring" class="nav-item flex items-center gap-3 px-4 py-3 rounded-lg transition-all cursor-pointer nav-inactive" onclick="switchNav('monitoring')">
+      <span class="material-symbols-outlined">monitoring</span>
+      <span class="text-sm font-medium">Monitoring</span>
+    </a>
+  </nav>
+
+  <!-- Doc list -->
+  <div class="flex-1 overflow-y-auto mt-4 -mx-2 px-2">
+    <p class="text-[10px] tracking-widest uppercase text-secondary opacity-60 font-mono px-2 mb-2">Indexed Documents</p>
+    <div id="docList"><p class="text-xs text-secondary opacity-50 px-2 py-3">No documents yet</p></div>
+  </div>
+
+  <div class="mt-auto pt-6 border-t border-outline-variant/20 space-y-2">
+    <label class="upload-zone-label w-full bg-primary text-on-primary py-3 px-4 rounded-lg text-sm font-medium hover:bg-primary-container transition-colors cursor-pointer flex items-center justify-center gap-2 mb-2" id="uploadLabel">
+      <span class="material-symbols-outlined" style="font-size:16px">upload</span>
+      <span id="uploadLabelText">Upload Document</span>
+      <input type="file" id="fileInput" accept=".pdf,.docx" class="hidden"/>
+    </label>
+    <button id="indexBtn" class="w-full hidden bg-primary-container text-on-primary py-2 px-4 rounded-lg text-sm font-medium hover:opacity-90 transition-opacity flex items-center justify-center gap-2" disabled>
+      <span id="indexBtnLabel">Index Document</span>
+    </button>
+    <a class="flex items-center gap-3 px-4 py-2 nav-inactive rounded-lg transition-all text-xs cursor-pointer">
+      <span class="material-symbols-outlined" style="font-size:18px">help_outline</span> Support
+    </a>
+  </div>
+</aside>
+
+<!-- ── Main Area ── -->
+<main class="ml-[240px] h-screen flex flex-col overflow-hidden">
+
+  <!-- Top App Bar -->
+  <header class="glass-nav sticky top-0 z-40 w-full px-8 h-16 flex justify-between items-center border-b border-outline-variant/15 flex-shrink-0">
+    <div class="flex items-center gap-8">
+      <span class="font-serif font-bold text-primary text-lg tracking-tight">FinDoc v2.0</span>
+      <nav class="flex gap-6 h-full items-end pb-0">
+        <button class="main-tab tab-inactive text-sm pb-4 pt-4 transition-all" data-main="chat"       onclick="switchNav('chat')">Chat</button>
+        <button class="main-tab tab-active   text-sm pb-4 pt-4 transition-all" data-main="metadata"   onclick="switchNav('metadata')">Metadata</button>
+        <button class="main-tab tab-inactive text-sm pb-4 pt-4 transition-all" data-main="chunks"     onclick="switchNav('chunks')">Chunks</button>
+        <button class="main-tab tab-inactive text-sm pb-4 pt-4 transition-all" data-main="monitoring" onclick="switchNav('monitoring')">Monitoring</button>
+      </nav>
+    </div>
+    <div class="flex items-center gap-3">
+      <div class="relative flex items-center">
+        <span class="material-symbols-outlined absolute left-3 text-outline" style="font-size:16px">search</span>
+        <input class="bg-surface-container-low border border-outline-variant/20 rounded-lg pl-9 pr-4 py-1.5 text-sm w-56 focus:outline-none focus:border-primary/40 transition-colors" placeholder="Search parameters..." type="text"/>
+      </div>
+      <button class="p-2 text-on-surface-variant hover:bg-surface-container transition-colors rounded-lg">
+        <span class="material-symbols-outlined">notifications</span>
+      </button>
+      <button class="p-2 text-on-surface-variant hover:bg-surface-container transition-colors rounded-lg">
+        <span class="material-symbols-outlined">history</span>
+      </button>
+      <div class="w-8 h-8 rounded-full bg-surface-container-high border border-outline-variant/30 flex items-center justify-center">
+        <span class="material-symbols-outlined text-secondary" style="font-size:18px">person</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── PANEL: Chat ── -->
+  <div class="main-panel" id="main-chat">
+    <div class="flex-shrink-0 px-8 py-3 border-b border-outline-variant/15 bg-surface-container-lowest">
+      <div id="chatDocBadge" class="text-sm text-secondary opacity-70">Select a document from the sidebar to begin</div>
+    </div>
+    <div id="chatEmpty" class="flex-1 flex flex-col items-center justify-center gap-4 text-on-surface-variant">
+      <span class="material-symbols-outlined text-5xl opacity-20">chat_bubble_outline</span>
+      <h3 class="text-2xl text-primary">Ask anything about your filing</h3>
+      <p class="text-sm opacity-70 max-w-xs text-center">Upload a 10-K or 10-Q, select it from the sidebar, then ask questions in natural language.</p>
+    </div>
+    <div id="messages" class="flex-1 overflow-y-auto px-8 py-6 flex flex-col gap-6" style="display:none!important"></div>
+    <div class="flex-shrink-0 border-t border-outline-variant/15 px-8 py-4 bg-surface-container-lowest">
+      <div class="max-w-3xl mx-auto flex gap-3">
+        <textarea id="chatInput" rows="1" disabled placeholder="Ask about revenue, risks, executive compensation…"
+          class="flex-1 bg-surface-container-low border border-outline-variant/25 rounded-lg px-4 py-2.5 text-sm resize-none focus:outline-none focus:border-primary/50 transition-colors min-h-[42px] max-h-[120px] font-sans disabled:opacity-40"></textarea>
+        <button id="sendBtn" disabled
+          class="bg-primary text-on-primary rounded-lg w-10 h-10 flex items-center justify-center flex-shrink-0 hover:bg-primary-container transition-colors disabled:opacity-30">
+          <span class="material-symbols-outlined" style="font-size:18px">arrow_forward</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── PANEL: Metadata ── -->
+  <div class="main-panel active" id="main-metadata">
+    <div id="metaScroll" class="flex-1 overflow-y-auto">
+      <div id="metaEmpty" class="flex flex-col items-center justify-center h-full gap-4 text-on-surface-variant">
+        <span class="material-symbols-outlined text-5xl opacity-20">folder_open</span>
+        <p class="text-sm opacity-70">Select a document to view metadata</p>
+      </div>
+      <div id="metaContent" class="hidden px-12 py-10 flex flex-col gap-12">
+        <!-- dynamically rendered -->
+      </div>
+    </div>
+  </div>
+
+  <!-- ── PANEL: Chunks ── -->
+  <div class="main-panel" id="main-chunks" style="flex-direction:column;">
+    <div class="flex-shrink-0 px-8 py-3 border-b border-outline-variant/15 bg-surface-container-lowest flex gap-3 items-center">
+      <select id="chunkDocSelect" class="bg-surface-container-low border border-outline-variant/20 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-primary/40 text-on-surface">
+        <option value="">— Select document —</option>
+      </select>
+      <select id="chunkSectionFilter" class="bg-surface-container-low border border-outline-variant/20 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-primary/40 text-on-surface">
+        <option value="">All sections</option>
+      </select>
+      <span id="chunksCount" class="text-xs font-mono text-secondary ml-auto"></span>
+    </div>
+    <div id="chunksScroll" class="flex-1 overflow-y-auto min-h-0"></div>
+  </div>
+
+  <!-- ── PANEL: Monitoring ── -->
+  <div class="main-panel" id="main-monitoring">
+    <div class="flex-1 overflow-y-auto">
+      <div class="px-12 py-10 flex flex-col gap-12">
+
+        <!-- Header -->
+        <section class="flex items-start justify-between">
+          <div>
+            <h1 class="text-5xl text-primary leading-tight">System Monitoring</h1>
+            <p class="data-mono text-secondary text-sm mt-2">24-hour rolling window · auto-refreshes every 30s</p>
+          </div>
+          <button onclick="loadMonitoring()" class="flex items-center gap-2 px-5 py-2.5 bg-primary text-on-primary rounded-lg text-sm font-medium hover:bg-primary-container transition-all">
+            <span class="material-symbols-outlined" style="font-size:16px">refresh</span> Refresh
+          </button>
+        </section>
+        <div id="mon-inline-error" style="display:none" class="border-l-4 border-error bg-error/[0.04] rounded-r-lg px-5 py-4 text-sm text-error font-mono"></div>
+
+        <!-- KPI row -->
+        <section>
+          <div class="flex items-center gap-4 mb-6">
+            <h2 class="text-3xl text-primary">Overview</h2>
+            <div class="h-px flex-1 bg-outline-variant/20"></div>
+          </div>
+          <div class="grid grid-cols-2 lg:grid-cols-4 gap-px bg-outline-variant/15 rounded-xl overflow-hidden border border-outline-variant/15">
+            <div class="bg-surface-container-lowest p-6">
+              <p class="text-xs font-mono text-secondary uppercase tracking-widest mb-1">Total Requests</p>
+              <p id="mon-total-requests" class="text-3xl font-sans font-bold text-primary">—</p>
+            </div>
+            <div class="bg-surface-container-lowest p-6">
+              <p class="text-xs font-mono text-secondary uppercase tracking-widest mb-1">Error Rate</p>
+              <p id="mon-error-rate" class="text-3xl font-sans font-bold text-primary">—</p>
+            </div>
+            <div class="bg-surface-container-lowest p-6">
+              <p class="text-xs font-mono text-secondary uppercase tracking-widest mb-1">LLM Calls</p>
+              <p id="mon-llm-calls" class="text-3xl font-sans font-bold text-primary">—</p>
+            </div>
+            <div class="bg-surface-container-lowest p-6">
+              <p class="text-xs font-mono text-secondary uppercase tracking-widest mb-1">Total Tokens</p>
+              <p id="mon-total-tokens" class="text-3xl font-sans font-bold text-primary">—</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- RAGAS Quality -->
+        <section>
+          <div class="flex items-center gap-4 mb-6">
+            <h2 class="text-3xl text-primary flex items-center gap-3">
+              <span class="material-symbols-outlined text-secondary">psychology</span> RAGAS Quality Scores
+            </h2>
+            <div class="h-px flex-1 bg-outline-variant/20"></div>
+          </div>
+          <div class="bg-surface-container-low rounded-xl p-1">
+            <div class="bg-surface-container-lowest p-8">
+              <p class="text-xs font-mono text-secondary uppercase tracking-widest mb-3">Faithfulness</p>
+              <p id="mon-faithfulness" class="data-mono text-4xl text-sage font-medium mb-4">—</p>
+              <div class="ragas-bar-bg" style="height:8px"><div id="bar-faithfulness" class="ragas-bar-fill ragas-good" style="width:0%;height:8px"></div></div>
+              <p class="text-sm text-secondary opacity-70 mt-3 leading-relaxed">Measures whether the answer is grounded in the retrieved document context. A high score means the model is not hallucinating — every claim in the answer can be traced back to the source chunks.</p>
+              <p class="text-xs font-mono text-secondary opacity-40 mt-3">Answer Relevancy omitted — requires sentence-transformers embedding which adds significant latency.</p>
+            </div>
+          </div>
+          <div class="mt-3 flex items-center gap-6 px-1">
+            <p class="text-xs font-mono text-secondary">Evaluations: <span id="mon-evals-total" class="text-primary font-medium">—</span></p>
+            <p class="text-xs font-mono text-secondary">Successful: <span id="mon-evals-ok" class="text-sage font-medium">—</span></p>
+            <p class="text-xs font-mono text-secondary">Failed: <span id="mon-evals-fail" class="text-error font-medium">—</span></p>
+          </div>
+        </section>
+
+        <!-- LLM Breakdown -->
+        <section>
+          <div class="flex items-center gap-4 mb-6">
+            <h2 class="text-3xl text-primary flex items-center gap-3">
+              <span class="material-symbols-outlined text-secondary">smart_toy</span> LLM Call Breakdown
+            </h2>
+            <div class="h-px flex-1 bg-outline-variant/20"></div>
+          </div>
+          <div id="mon-llm-table" class="bg-surface-container-low rounded-xl p-1">
+            <div class="bg-surface-container-lowest px-5 py-3 grid grid-cols-4 text-xs font-mono text-secondary uppercase tracking-widest">
+              <span>Call Type</span><span class="text-right">Count</span><span class="text-right">Avg Latency</span><span class="text-right">Tokens</span>
+            </div>
+            <div id="mon-llm-rows" class="divide-y divide-outline-variant/10"></div>
+          </div>
+        </section>
+
+        <!-- Endpoint Latency -->
+        <section>
+          <div class="flex items-center gap-4 mb-6">
+            <h2 class="text-3xl text-primary flex items-center gap-3">
+              <span class="material-symbols-outlined text-secondary">speed</span> Endpoint Latency
+            </h2>
+            <div class="h-px flex-1 bg-outline-variant/20"></div>
+          </div>
+          <div id="mon-endpoint-table" class="bg-surface-container-low rounded-xl p-1">
+            <div class="bg-surface-container-lowest px-5 py-3 grid grid-cols-5 text-xs font-mono text-secondary uppercase tracking-widest">
+              <span class="col-span-2">Endpoint</span><span class="text-right">Requests</span><span class="text-right">Avg</span><span class="text-right">p95</span>
+            </div>
+            <div id="mon-endpoint-rows" class="divide-y divide-outline-variant/10"></div>
+          </div>
+        </section>
+
+        <!-- Quality by Document -->
+        <section>
+          <div class="flex items-center gap-4 mb-6">
+            <h2 class="text-3xl text-primary flex items-center gap-3">
+              <span class="material-symbols-outlined text-secondary">article</span> Quality by Document
+            </h2>
+            <div class="h-px flex-1 bg-outline-variant/20"></div>
+          </div>
+          <div id="mon-doc-quality" class="space-y-3"></div>
+        </section>
+
+        <!-- Recent Errors -->
+        <section class="mb-20">
+          <div class="flex items-center gap-4 mb-6">
+            <h2 class="text-3xl text-primary flex items-center gap-3">
+              <span class="material-symbols-outlined text-secondary">error_outline</span> Recent Errors
+            </h2>
+            <div class="h-px flex-1 bg-outline-variant/20"></div>
+            <span id="mon-error-count" class="data-mono text-xs text-error"></span>
+          </div>
+          <div id="mon-errors-list" class="space-y-2"></div>
+        </section>
+
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<!-- Toast -->
+<div class="toast-wrap" id="toastWrap"></div>
+
+<!-- Feedback Modal -->
+<div class="modal-backdrop" id="feedbackModal" style="display:none" onclick="closeFeedbackModal(event)">
+  <div class="bg-surface-container-lowest rounded-xl p-8 w-[420px] max-w-[90vw] shadow-xl" onclick="event.stopPropagation()">
+    <h3 class="text-2xl text-primary mb-2">Improve this answer</h3>
+    <p class="text-sm text-on-surface-variant mb-5 leading-relaxed">What was wrong or missing? Your feedback generates a better response using the same document context.</p>
+    <textarea id="feedbackComment" maxlength="500" placeholder="Optional: describe what was wrong or what you expected…"
+      class="w-full bg-surface-container-low border border-outline-variant/25 rounded-lg px-4 py-3 text-sm font-sans focus:outline-none focus:border-primary/50 resize-none min-h-[80px]"></textarea>
+    <div id="feedbackCharCount" class="text-right text-xs font-mono text-secondary mt-1">0 / 500</div>
+    <div class="flex gap-3 mt-4 justify-end">
+      <button onclick="closeFeedbackModal()" class="px-5 py-2 bg-surface-container-high text-on-surface-variant rounded-lg text-sm hover:bg-surface-container-highest transition-colors">Cancel</button>
+      <button id="feedbackSubmitBtn" onclick="submitFeedback()" class="px-5 py-2 bg-primary text-on-primary rounded-lg text-sm hover:bg-primary-container transition-colors">Submit &amp; retry</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '';
+
+// ── API Key ───────────────────────────────────────────────────────────────────
+function getApiKey() {
+  let key = sessionStorage.getItem('findoc_api_key');
+  if (!key) { key = window.prompt('Enter your FinDoc API key:'); if (key) sessionStorage.setItem('findoc_api_key', key.trim()); }
+  return key ? key.trim() : '';
+}
+function clearApiKey() { sessionStorage.removeItem('findoc_api_key'); }
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let state = { docs:[], activeDoc:null, chatHistory:[], pendingFile:null };
+let _feedbackCtx = null;
+
+// ── Error messages ────────────────────────────────────────────────────────────
+const ERRORS = {
+  400:{title:'Invalid request',detail:'Check the file type or input and try again.'},
+  401:{title:'Authentication required',detail:'Your API key is missing or invalid.',action:'Clear & retry',fn:()=>{clearApiKey();location.reload();}},
+  403:{title:'Invalid API key',detail:'The API key you entered is incorrect.',action:'Clear & retry',fn:()=>{clearApiKey();location.reload();}},
+  404:{title:'Not found',detail:'The document or resource was not found.'},
+  413:{title:'File too large',detail:'File exceeds 50 MB. Please use a smaller file.'},
+  422:{title:'No content found',detail:'Not enough relevant content. Try rephrasing.'},
+  429:{title:'Too many requests',detail:'Please wait a moment before trying again.'},
+  500:{title:'Server error',detail:'Something went wrong. Check that GROQ_API_KEY is set.'},
+  503:{title:'Service unavailable',detail:'Server temporarily unavailable. Try again soon.'},
+  network:{title:'Network error',detail:'Could not reach the server. Is it running?'},
+};
+function getErr(s,msg){const i=ERRORS[s]||{title:'Error',detail:msg||'Unknown error.'};return{...i,detail:(msg&&s!==401&&s!==403)?msg:i.detail};}
+
+// ── Utils ─────────────────────────────────────────────────────────────────────
+function toast(msg,type='info'){
+  const w=document.getElementById('toastWrap');
+  const t=document.createElement('div'); t.className='toast';
+  t.innerHTML=`<div style="width:7px;height:7px;border-radius:50%;flex-shrink:0" class="toast-dot-${type}"></div><div style="flex:1;font-size:12px">${msg}</div>`;
+  w.appendChild(t); setTimeout(()=>t.remove(),4000);
+}
+async function apiFetch(path,opts={}){
+  const key=getApiKey();
+  opts.headers={...(opts.headers||{}),'Authorization':`Bearer ${key}`};
+  let res;
+  try{ res=await fetch(API+path,opts); }
+  catch(e){ throw{type:'network',message:'Network error'}; }
+  if(res.status===401||res.status===403) clearApiKey();
+  if(!res.ok){ const b=await res.json().catch(()=>({})); throw{type:'http',status:res.status,message:b.detail||res.statusText}; }
+  return res;
+}
+async function authDownload(path,filename,mime){
+  try{
+    const res=await apiFetch(path);
+    const blob=await res.blob();
+    const url=URL.createObjectURL(new Blob([blob],{type:mime}));
+    const a=document.createElement('a'); a.href=url; a.download=filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+  }catch(e){ const i=getErr(e.type==='network'?'network':e.status,e.message); toast(i.title+': '+i.detail,'error'); }
+}
+function escHtml(s){ return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function renderMd(text) {
+  if (typeof marked === 'undefined') return '<span style="white-space:pre-wrap">' + escHtml(text) + '</span>';
+  try {
+    marked.setOptions({ breaks: true, gfm: true });
+    return marked.parse(text || '');
+  } catch(e) {
+    return '<span style="white-space:pre-wrap">' + escHtml(text) + '</span>';
+  }
+}
+
+function fileIcon(n){ return n.endsWith('.docx')?'📝':'📄'; }
+function fmtScore(v){ return v!=null?Math.round(v*100)+'%':'—'; }
+function barClass(v){ if(v==null)return'ragas-good'; if(v>=0.75)return'ragas-good'; if(v>=0.5)return'ragas-mid'; return'ragas-bad'; }
+
+// ── Navigation ────────────────────────────────────────────────────────────────
+function switchNav(tab){
+  document.querySelectorAll('.nav-item').forEach(el=>{el.className=el.className.replace('nav-active','nav-inactive');});
+  document.querySelectorAll('.main-panel').forEach(el=>el.classList.remove('active'));
+  document.querySelectorAll('.main-tab').forEach(el=>{ el.className=el.className.replace('tab-active','tab-inactive'); });
+  const navEl=document.getElementById('nav-'+tab);
+  if(navEl){ navEl.className=navEl.className.replace('nav-inactive','nav-active'); }
+  const panelEl=document.getElementById('main-'+tab);
+  if(panelEl){ panelEl.classList.add('active'); }
+  const tabEl=document.querySelector(`.main-tab[data-main="${tab}"]`);
+  if(tabEl){ tabEl.className=tabEl.className.replace('tab-inactive','tab-active'); }
+  if(tab==='metadata'&&state.activeDoc) renderMetadata(state.activeDoc);
+  if(tab==='chunks'){ const s=document.getElementById('chunkDocSelect'); if(state.activeDoc&&s.value!==state.activeDoc){s.value=state.activeDoc;loadChunks();} }
+  if(tab==='monitoring') loadMonitoring();
+}
+
+// ── Load docs ─────────────────────────────────────────────────────────────────
+async function loadDocs(){
+  try{
+    const res=await apiFetch('/documents'); const data=await res.json();
+    state.docs=data.documents||[]; renderSidebarDocs(); renderChunkDocSelect();
+  }catch(e){ console.error('loadDocs failed',e); }
+}
+
+function renderSidebarDocs(){
+  const el=document.getElementById('docList');
+  if(!state.docs.length){ el.innerHTML='<p class="text-xs text-secondary opacity-50 px-2 py-3">No documents yet</p>'; return; }
+  el.innerHTML=state.docs.map(d=>`
+    <div class="flex items-center gap-2 px-2 py-2 rounded-lg cursor-pointer transition-all hover:bg-surface-container group ${state.activeDoc===d.doc_name?'bg-surface-container':''}">
+      <span class="text-sm">${fileIcon(d.doc_name)}</span>
+      <div class="flex-1 min-w-0 cursor-pointer" onclick="selectDoc('${escHtml(d.doc_name)}')">
+        <div class="text-xs font-medium text-on-surface truncate">${escHtml(d.company_name||d.doc_name)}</div>
+        <div class="text-[10px] font-mono text-secondary">${escHtml(d.doc_type||'')} ${escHtml(d.fiscal_year||'')} · ${d.chunk_count||'?'} chunks</div>
+      </div>
+      <button onclick="deleteDoc(event,'${escHtml(d.doc_name)}')" class="opacity-0 group-hover:opacity-100 transition-opacity text-error hover:bg-error/10 rounded p-0.5">
+        <span class="material-symbols-outlined" style="font-size:14px">close</span>
+      </button>
+    </div>`).join('');
+}
+
+// ── Upload ────────────────────────────────────────────────────────────────────
+const fileInput=document.getElementById('fileInput');
+const indexBtn =document.getElementById('indexBtn');
+fileInput.addEventListener('change',()=>{
+  state.pendingFile=fileInput.files[0]||null;
+  if(state.pendingFile){
+    document.getElementById('uploadLabelText').textContent=state.pendingFile.name.length>20?state.pendingFile.name.slice(0,18)+'…':state.pendingFile.name;
+    indexBtn.classList.remove('hidden'); indexBtn.disabled=false;
+  }
+});
+indexBtn.addEventListener('click',async()=>{
+  if(!state.pendingFile)return;
+  indexBtn.disabled=true;
+  document.getElementById('indexBtnLabel').innerHTML='<div class="spinner"></div>';
+  const fd=new FormData(); fd.append('file',state.pendingFile);
+  try{
+    const res=await apiFetch('/documents/upload',{method:'POST',body:fd});
+    const data=await res.json(); toast(data.message,'success');
+    state.pendingFile=null; fileInput.value='';
+    document.getElementById('uploadLabelText').textContent='Upload Document';
+    indexBtn.classList.add('hidden');
+    await loadDocs(); selectDoc(data.doc_name);
+  }catch(e){ const i=getErr(e.type==='network'?'network':e.status,e.message); toast(i.title+': '+i.detail,'error'); }
+  finally{ document.getElementById('indexBtnLabel').textContent='Index Document'; indexBtn.disabled=false; }
+});
+
+// ── Select / Delete ───────────────────────────────────────────────────────────
+function selectDoc(name){
+  state.activeDoc=name; state.chatHistory=[];
+  renderSidebarDocs(); updateChatHeader(); renderMessages();
+  document.getElementById('chatInput').disabled=false;
+  document.getElementById('sendBtn').disabled=false;
+  document.getElementById('chunkDocSelect').value=name;
+  const activeTab=document.querySelector('.main-tab.tab-active');
+  if(activeTab){ const t=activeTab.dataset.main; if(t==='metadata')renderMetadata(name); if(t==='chunks')loadChunks(); }
+}
+async function deleteDoc(e,name){
+  e.stopPropagation();
+  try{
+    await apiFetch(`/documents/${encodeURIComponent(name)}`,{method:'DELETE'});
+    toast(`Deleted ${name}`,'success');
+    if(state.activeDoc===name){ state.activeDoc=null; updateChatHeader(); document.getElementById('chatInput').disabled=true; document.getElementById('sendBtn').disabled=true; state.chatHistory=[]; renderMessages(); }
+    await loadDocs();
+  }catch(e2){ const i=getErr(e2.type==='network'?'network':e2.status,e2.message); toast(i.title+': '+i.detail,'error'); }
+}
+function updateChatHeader(){
+  const el=document.getElementById('chatDocBadge');
+  if(state.activeDoc){
+    const doc=state.docs.find(d=>d.doc_name===state.activeDoc)||{};
+    el.innerHTML=`<span class="inline-flex items-center gap-2"><span style="width:6px;height:6px;border-radius:50%;background:#4A6741;display:inline-block"></span><span class="data-mono text-xs text-primary">${escHtml(doc.company_name||state.activeDoc)}</span></span>`;
+  } else { el.textContent='Select a document from the sidebar to begin'; el.className='text-sm text-secondary opacity-70'; }
+}
+
+// ── Chat ──────────────────────────────────────────────────────────────────────
+const chatInput=document.getElementById('chatInput');
+const sendBtn  =document.getElementById('sendBtn');
+chatInput.addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();} });
+chatInput.addEventListener('input',()=>{ chatInput.style.height='auto'; chatInput.style.height=Math.min(chatInput.scrollHeight,120)+'px'; });
+sendBtn.addEventListener('click',sendMessage);
+
+async function sendMessage(){
+  const q=chatInput.value.trim(); if(!q||!state.activeDoc)return;
+  if(q.length>1000){toast('Question too long (max 1000 chars)','error');return;}
+  chatInput.value=''; chatInput.style.height='auto';
+  state.chatHistory.push({role:'user',text:q,chunks:[]});
+  const typingId='t-'+Date.now(); state.chatHistory.push({role:'typing',id:typingId});
+  renderMessages();
+  try{
+    const res=await apiFetch('/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q,doc_name:state.activeDoc})});
+    const data=await res.json();
+    state.chatHistory=state.chatHistory.filter(m=>m.id!==typingId);
+    state.chatHistory.push({role:'assistant',text:data.answer,chunks:data.chunks_used||[],answerId:data.answer_id,query:q,vote:null,retried:false});
+  }catch(e){
+    state.chatHistory=state.chatHistory.filter(m=>m.id!==typingId);
+    const i=getErr(e.type==='network'?'network':e.status,e.message);
+    state.chatHistory.push({role:'error',title:i.title,detail:i.detail});
+  }
+  renderMessages();
+}
+
+function renderMessages(){
+  const empty=document.getElementById('chatEmpty');
+  const msgsEl=document.getElementById('messages');
+  if(!state.chatHistory.length){ empty.style.display='flex'; msgsEl.style.setProperty('display','none','important'); return; }
+  empty.style.display='none'; msgsEl.style.removeProperty('display');
+
+  msgsEl.innerHTML=state.chatHistory.map((m,i)=>{
+    if(m.role==='typing') return `<div class="flex gap-3 msg-animate"><div class="w-8 h-8 rounded-lg bg-surface-container-high border border-outline-variant/20 flex items-center justify-center flex-shrink-0"><span class="material-symbols-outlined text-secondary" style="font-size:14px">smart_toy</span></div><div class="pt-1"><div class="typing-dots"><span></span><span></span><span></span></div></div></div>`;
+    if(m.role==='user') return `<div class="flex gap-3 msg-animate justify-end"><div class="max-w-xl bg-surface-container-high rounded-xl px-5 py-3 text-sm leading-relaxed">${escHtml(m.text)}</div><div class="w-8 h-8 rounded-full bg-primary-container flex items-center justify-center flex-shrink-0"><span class="material-symbols-outlined text-on-primary" style="font-size:14px">person</span></div></div>`;
+    if(m.role==='error') return `<div class="flex gap-3 msg-animate"><div class="flex-1 bg-error/5 border-l-2 border-error rounded-r-lg px-5 py-3"><p class="text-sm font-medium text-error">${escHtml(m.title)}</p><p class="text-xs text-on-surface-variant mt-1">${escHtml(m.detail)}</p></div></div>`;
+
+    const upA=m.vote==='up'?'active':''; const downA=m.vote==='down'?'active':''; const voted=m.vote!==null;
+    const retriedBadge=m.retried?'<span class="retry-badge">↻ improved</span>':'';
+    const chunksHtml=m.chunks&&m.chunks.length?`
+      <div class="chunks-toggle flex items-center gap-2 mt-3 text-xs text-secondary cursor-pointer hover:text-on-surface transition-colors" onclick="toggleChunks(this,'cl-${i}')">
+        <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 4l4 4 4-4"/></svg>
+        ${m.chunks.length} sources used
+      </div>
+      <div class="chunks-list" id="cl-${i}">
+        ${m.chunks.map(c=>`
+          <div class="chat-chunk-card bg-surface-container-low rounded-lg overflow-hidden mt-1" id="cc-${i}-${c.chunk_index}">
+            <div class="chat-chunk-head flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-surface-container transition-colors" onclick="toggleChatChunk('cc-${i}-${c.chunk_index}')">
+              <span class="data-mono text-xs text-secondary">#${c.chunk_index}</span>
+              ${c.section_hint?`<span class="data-mono text-xs px-2 py-0.5 bg-surface-container-high rounded">${escHtml(c.section_hint)}</span>`:''}
+              <div class="ml-auto flex items-center gap-2">
+                <div class="score-bar-bg w-12"><div class="score-bar-fill" style="width:${Math.round(c.score*100)}%"></div></div>
+                <span class="data-mono text-xs text-sage">${Math.round(c.score*100)}%</span>
+                <span class="chunk-chevron text-secondary" style="font-size:10px">▾</span>
+              </div>
+            </div>
+            <div class="chat-chunk-body"><pre class="data-mono text-xs text-on-surface-variant px-4 pb-4 leading-relaxed whitespace-pre-wrap">${escHtml(c.text||'')}</pre></div>
+          </div>`).join('')}
+      </div>`:''
+    ;
+    return `<div class="flex gap-3 msg-animate"><div class="w-8 h-8 rounded-lg bg-surface-container-high border border-outline-variant/20 flex items-center justify-center flex-shrink-0"><span class="material-symbols-outlined text-secondary" style="font-size:14px">smart_toy</span></div>
+      <div class="flex-1 min-w-0">
+        <div class="text-xs font-mono text-secondary mb-2 flex items-center gap-2">FINDOC ${retriedBadge}</div>
+        <div class="text-sm leading-relaxed text-on-surface md-body">${renderMd(m.text)}</div>
+        ${chunksHtml}
+        <div class="flex items-center gap-2 mt-3">
+          <button class="vote-btn up ${upA}" ${voted?'disabled':''} onclick="submitUpvote(${i})">▲ Helpful</button>
+          <button class="vote-btn down ${downA}" ${voted?'disabled':''} onclick="openFeedbackModal(${i},'${m.answerId}',${JSON.stringify(m.query)},'${escHtml(state.activeDoc)}',${JSON.stringify(m.text)})">▼ Improve</button>
+          ${voted&&!m.retried?'<span class="text-xs font-mono text-secondary ml-2">Thanks for your feedback</span>':''}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  msgsEl.scrollTop=msgsEl.scrollHeight;
+}
+
+function toggleChunks(el,id){ el.classList.toggle('open'); document.getElementById(id).classList.toggle('open'); }
+function toggleChatChunk(id){ document.getElementById(id).classList.toggle('open'); }
+
+// ── Feedback ──────────────────────────────────────────────────────────────────
+function openFeedbackModal(idx,aid,q,doc,prev){ _feedbackCtx={idx,aid,q,doc,prev}; document.getElementById('feedbackComment').value=''; document.getElementById('feedbackCharCount').textContent='0 / 500'; document.getElementById('feedbackModal').style.display='flex'; document.getElementById('feedbackComment').focus(); }
+function closeFeedbackModal(e){ if(e&&e.target!==document.getElementById('feedbackModal'))return; document.getElementById('feedbackModal').style.display='none'; _feedbackCtx=null; }
+document.getElementById('feedbackComment').addEventListener('input',function(){ document.getElementById('feedbackCharCount').textContent=`${this.value.length} / 500`; });
+async function submitUpvote(idx){
+  const msg=state.chatHistory[idx]; if(!msg||msg.vote)return; msg.vote='up'; renderMessages();
+  try{ await apiFetch('/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({answer_id:msg.answerId,query:msg.query,doc_name:state.activeDoc,vote:'up',comment:null,previous_answer:msg.text})}); toast('Thanks for your feedback!','success'); }
+  catch(e){ msg.vote=null; renderMessages(); toast('Could not send feedback','error'); }
+}
+async function submitFeedback(){
+  if(!_feedbackCtx)return;
+  const {idx,aid,q,doc,prev}=_feedbackCtx;
+  const comment=document.getElementById('feedbackComment').value.trim();
+  const btn=document.getElementById('feedbackSubmitBtn'); btn.disabled=true; btn.textContent='Sending…';
+  if(state.chatHistory[idx])state.chatHistory[idx].vote='down';
+  renderMessages(); document.getElementById('feedbackModal').style.display='none';
+  const typingId='retry-'+Date.now();
+  state.chatHistory.splice(idx+1,0,{role:'typing',id:typingId});
+  renderMessages();
+  try{
+    const res=await apiFetch('/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({answer_id:aid,query:q,doc_name:doc,vote:'down',comment:comment||null,previous_answer:prev})});
+    const data=await res.json();
+    state.chatHistory=state.chatHistory.filter(m=>m.id!==typingId);
+    if(data.improved_answer){ state.chatHistory.splice(idx+1,0,{role:'assistant',text:data.improved_answer,chunks:data.chunks_used||[],answerId:data.answer_id,query:q,vote:null,retried:true}); toast('Improved answer generated!','success'); }
+  }catch(e){
+    state.chatHistory=state.chatHistory.filter(m=>m.id!==typingId);
+    const i=getErr(e.type==='network'?'network':e.status,e.message); toast(i.title+': '+i.detail,'error');
+    if(state.chatHistory[idx])state.chatHistory[idx].vote=null;
+  } finally{ btn.disabled=false; btn.textContent='Submit & retry'; _feedbackCtx=null; }
+  renderMessages();
+}
+
+// ── Metadata ──────────────────────────────────────────────────────────────────
+async function renderMetadata(docName){
+  const empty=document.getElementById('metaEmpty');
+  const content=document.getElementById('metaContent');
+  if(!docName){ empty.classList.remove('hidden'); content.classList.add('hidden'); return; }
+  empty.classList.remove('hidden'); content.classList.add('hidden');
+  empty.innerHTML=`<span class="material-symbols-outlined text-5xl opacity-20">hourglass_empty</span><p class="text-sm opacity-70">Loading metadata…</p>`;
+  try{
+    const res=await apiFetch('/documents/'+encodeURIComponent(docName)+'/metadata');
+    const meta=await res.json();
+    const fin=meta.financials||{};
+    const ext=docName.endsWith('.docx')?'DOCX':'PDF';
+    const dt=(meta.doc_type||'').toUpperCase();
+    const base=encodeURIComponent(docName);
+    const dtBadge=dt.includes('10-K')?`<span class="px-4 py-1.5 bg-[#E8F5E9] text-[#2E7D32] text-xs font-mono font-bold rounded tracking-wide border border-[#2E7D32]/10">DOC TYPE: ${dt}</span>`:dt.includes('10-Q')?`<span class="px-4 py-1.5 bg-[#E3F2FD] text-[#1565C0] text-xs font-mono font-bold rounded tracking-wide border border-[#1565C0]/10">DOC TYPE: ${dt}</span>`:`<span class="px-4 py-1.5 bg-surface-container-high text-on-surface-variant text-xs font-mono rounded border border-outline-variant/20">DOC TYPE: ${dt||'DOC'}</span>`;
+
+    function dataCell(label,val,green){
+      const isNull=!val; return`<div class="bg-surface-container-lowest p-5 flex flex-col gap-1 hover:bg-surface-container-low transition-colors"><span class="text-xs font-mono text-secondary">${escHtml(label)}</span><span class="data-mono text-xl ${isNull?'text-on-surface-variant/30':green?'text-sage':'text-primary'} font-medium">${escHtml(val||'—')}</span></div>`;
+    }
+    function finSection(icon,title,keys){
+      const present=keys.filter(k=>fin[k]); if(!present.length)return'';
+      return`<div class="space-y-6"><h3 class="text-2xl text-primary flex items-center gap-3"><span class="material-symbols-outlined text-secondary">${icon}</span>${title}</h3><div class="bg-surface-container-low rounded-xl p-1"><div class="grid grid-cols-2 gap-px">${present.map(k=>dataCell(k.replace(/_/g,' '),fin[k],true)).join('')}</div></div></div>`;
+    }
+
+    const identityFields=[
+      ['Ticker Symbol',meta.ticker],['Document Type',meta.doc_type],
+      ['Fiscal Year',meta.fiscal_year],['Period End Date',meta.period_end_date],
+      ['Parsed Chunks',meta.chunk_count?meta.chunk_count+' Modules':null],['Original Filename',docName],
+    ];
+
+    content.innerHTML=`
+      <section class="flex flex-col md:flex-row justify-between items-start gap-6">
+        <div>
+          <h1 class="text-6xl text-primary leading-tight">${escHtml(meta.company_name||docName)}</h1>
+          <p class="data-mono text-secondary text-sm mt-2">${escHtml(docName)}</p>
+        </div>
+        <div class="flex gap-3 pt-4 flex-wrap">
+          ${dtBadge}
+          <span class="px-4 py-1.5 bg-surface-container-high text-on-surface-variant text-xs font-mono rounded border border-outline-variant/20">FORMAT: ${ext}</span>
+          ${meta.fiscal_year?`<span class="px-4 py-1.5 bg-surface-container-high text-on-surface-variant text-xs font-mono rounded border border-outline-variant/20">FY: ${escHtml(meta.fiscal_year)}</span>`:''}
+        </div>
+      </section>
+
+      ${meta.summary?`
+      <section class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <div class="lg:col-span-8">
+          <div class="bg-surface-container-low p-8 rounded-xl">
+            <h3 class="text-2xl text-primary mb-4">Executive Summary</h3>
+            <p class="text-on-surface-variant leading-relaxed text-lg font-light">${escHtml(meta.summary)}</p>
+          </div>
+        </div>
+        <div class="lg:col-span-4 flex flex-col justify-end">
+          <div class="p-6 border-l-2 border-secondary/20">
+            <span class="text-xs font-mono uppercase tracking-[0.2em] text-secondary">Document Index</span>
+            <div class="mt-4 flex flex-wrap gap-2">
+              <span class="data-mono text-xs px-2 py-1 bg-surface-container-high rounded">Business Overview</span>
+              <span class="data-mono text-xs px-2 py-1 bg-surface-container-high rounded">Risk Factors</span>
+              <span class="data-mono text-xs px-2 py-1 bg-surface-container-high rounded">Financials</span>
+            </div>
+          </div>
+        </div>
+      </section>`:''}
+
+      <section>
+        <div class="flex items-center gap-4 mb-6">
+          <h2 class="text-3xl text-primary">Identity &amp; Filing Metadata</h2>
+          <div class="h-px flex-1 bg-outline-variant/20"></div>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-px bg-outline-variant/15 rounded-xl overflow-hidden border border-outline-variant/15">
+          ${identityFields.map(([l,v])=>dataCell(l,v?String(v):null,false)).join('')}
+        </div>
+      </section>
+
+      <section class="grid grid-cols-1 md:grid-cols-2 gap-12">
+        ${finSection('payments','Income Statement',['revenue','gross_profit','operating_income','net_income','ebitda','eps_basic','eps_diluted'])}
+        ${finSection('account_balance','Balance Sheet',['total_assets','total_liabilities','shareholders_equity','current_assets','current_liabilities'])}
+        ${finSection('water_drop','Cash Flow',['operating_cash_flow','capital_expenditures','free_cash_flow'])}
+        ${finSection('trending_up','Ratios &amp; Margins',['gross_margin','operating_margin','net_margin','debt_to_equity','current_ratio','return_on_equity','return_on_assets'])}
+      </section>
+
+      <section class="mb-20 border-t border-outline-variant/20 pt-10 flex flex-col md:flex-row items-center justify-between gap-6">
+        <div class="flex items-center gap-4">
+          <span class="text-sm font-mono text-secondary uppercase tracking-widest">Data Export:</span>
+          <div class="flex gap-2">
+            <button onclick="authDownload('/documents/${base}/metadata/download/json','${docName.replace(/\.(pdf|docx)$/i,'')}_metadata.json','application/json')" class="flex items-center gap-2 px-6 py-2.5 bg-primary text-on-primary rounded-lg text-sm font-medium hover:bg-primary-container transition-all">
+              <span class="material-symbols-outlined" style="font-size:14px">download</span> Export as JSON
+            </button>
+            <button onclick="authDownload('/documents/${base}/metadata/download/csv','${docName.replace(/\.(pdf|docx)$/i,'')}_metadata.csv','text/csv')" class="flex items-center gap-2 px-6 py-2.5 bg-surface-container-high text-on-surface-variant rounded-lg text-sm font-medium hover:bg-surface-container-highest transition-all">
+              <span class="material-symbols-outlined" style="font-size:14px">table_view</span> Export as CSV
+            </button>
+          </div>
+        </div>
+        <p class="text-xs text-secondary opacity-60 font-mono italic">Compiled by FinDoc v2.0</p>
+      </section>`;
+
+    empty.classList.add('hidden'); content.classList.remove('hidden');
+  }catch(e){
+    const i=getErr(e.type==='network'?'network':e.status,e.message);
+    empty.innerHTML=`<span class="material-symbols-outlined text-5xl opacity-20 text-error">error_outline</span><p class="text-sm text-error">${i.title}: ${i.detail}</p>`;
+  }
+}
+
+// ── Chunks ────────────────────────────────────────────────────────────────────
+function renderChunkDocSelect(){
+  const s=document.getElementById('chunkDocSelect');
+  s.innerHTML='<option value="">— Select document —</option>'+state.docs.map(d=>`<option value="${escHtml(d.doc_name)}">${escHtml(d.company_name||d.doc_name)}</option>`).join('');
+}
+document.getElementById('chunkDocSelect').addEventListener('change',loadChunks);
+document.getElementById('chunkSectionFilter').addEventListener('change',filterChunks);
+let allChunks=[];
+async function loadChunks(){
+  const doc=document.getElementById('chunkDocSelect').value;
+  const scroll=document.getElementById('chunksScroll');
+  if(!doc){scroll.innerHTML='';allChunks=[];return;}
+  scroll.innerHTML='<p class="text-xs text-secondary p-6">Loading…</p>';
+  try{
+    const res=await apiFetch(`/documents/${encodeURIComponent(doc)}/chunks`);
+    const data=await res.json(); allChunks=data.chunks||[];
+    const sections=[...new Set(allChunks.map(c=>c.section_hint).filter(Boolean))].sort();
+    const s2=document.getElementById('chunkSectionFilter');
+    s2.innerHTML='<option value="">All sections</option>'+sections.map(s=>`<option value="${escHtml(s)}">${escHtml(s)}</option>`).join('');
+    renderChunks(allChunks);
+  }catch(e){
+    const i=getErr(e.type==='network'?'network':e.status,e.message);
+    scroll.innerHTML=`<div class="m-6 bg-error/5 border-l-2 border-error rounded-r-lg px-5 py-3"><p class="text-sm font-medium text-error">${i.title}</p><p class="text-xs text-on-surface-variant mt-1">${i.detail}</p></div>`;
+  }
+}
+function filterChunks(){ const s=document.getElementById('chunkSectionFilter').value; renderChunks(s?allChunks.filter(c=>c.section_hint===s):allChunks); }
+function renderChunks(chunks){
+  document.getElementById('chunksCount').textContent=`${chunks.length} chunks`;
+  const scroll=document.getElementById('chunksScroll');
+  if(!chunks.length){scroll.innerHTML='<p class="text-xs text-secondary p-6">No chunks found.</p>';return;}
+  scroll.innerHTML=chunks.map(c=>`
+    <div class="chunk-row border-b border-outline-variant/10 bg-surface-container-lowest hover:bg-surface-container-low transition-colors" id="chunk-${c.chunk_index}">
+      <div class="flex items-center gap-4 px-8 py-4 cursor-pointer" onclick="toggleChunkRow(${c.chunk_index})">
+        <span class="data-mono text-xs text-secondary min-w-[40px]">#${c.chunk_index}</span>
+        ${c.section_hint?`<span class="data-mono text-xs px-2 py-0.5 bg-surface-container-high rounded">${escHtml(c.section_hint)}</span>`:''}
+        <span class="data-mono text-xs text-secondary ml-auto">${c.char_start}–${c.char_end}</span>
+        <span class="chunk-chevron text-secondary" style="font-size:12px">▾</span>
+      </div>
+      <div class="chunk-body"><pre class="data-mono text-xs text-on-surface-variant px-8 pb-5 leading-relaxed whitespace-pre-wrap max-h-64 overflow-y-auto">${escHtml(c.text)}</pre></div>
+    </div>`).join('');
+}
+function toggleChunkRow(idx){ document.getElementById(`chunk-${idx}`).classList.toggle('open'); }
+
+// ── Monitoring ────────────────────────────────────────────────────────────────
+async function loadMonitoring(){
+  // Show inline error in the panel instead of a vanishing toast
+  function monErr(msg){
+    const el=document.getElementById('mon-inline-error');
+    if(el){ el.textContent=msg; el.style.display='block'; }
+  }
+  const errEl=document.getElementById('mon-inline-error');
+  if(errEl) errEl.style.display='none';
+
+  // Safe element setter — skips if element doesn't exist
+  function setText(id,val){ const el=document.getElementById(id); if(el) el.textContent=val; }
+  function setHtml(id,val){ const el=document.getElementById(id); if(el) el.innerHTML=val; }
+
+  function setScore(id,barid,val){
+    setText(id, fmtScore(val));
+    const bar=document.getElementById(barid);
+    if(!bar) return;
+    bar.style.width=(val!=null?Math.round(val*100):0)+'%';
+    bar.className='ragas-bar-fill '+barClass(val);
+  }
+
+  let d;
+  try{
+    const res=await apiFetch('/metrics');
+    d=await res.json();
+  }catch(e){
+    const i=getErr(e.type==='network'?'network':e.status,e.message);
+    monErr('Could not load metrics: '+i.title+' — '+i.detail);
+    return;
+  }
+
+  const req=d.requests||{}; const llm=d.llm||{}; const ragas=d.ragas||{}; const errs=d.errors||{};
+
+  // ── KPIs ──
+  setText('mon-total-requests', req.total??'—');
+  setText('mon-error-rate',     req.error_rate_pct!=null ? req.error_rate_pct+'%' : '—');
+  setText('mon-llm-calls',      llm.total_calls??'—');
+  setText('mon-total-tokens',   llm.total_tokens!=null ? llm.total_tokens.toLocaleString() : '—');
+
+  // ── RAGAS ──
+  setScore('mon-faithfulness','bar-faithfulness', ragas.avg_faithfulness);
+  // answer_relevancy removed — faithfulness only
+  setText('mon-evals-total', ragas.total_evaluations??'—');
+  setText('mon-evals-ok',    ragas.successful??'—');
+  setText('mon-evals-fail',  ragas.failed??'—');
+
+  // ── LLM breakdown ──
+  const byType=llm.by_type||{};
+  if(!Object.keys(byType).length){
+    setHtml('mon-llm-rows','<div class="bg-surface-container-lowest px-5 py-5 text-xs text-secondary font-mono italic">No LLM calls recorded in this window yet.</div>');
+  } else {
+    setHtml('mon-llm-rows', Object.entries(byType).map(([type,s])=>`
+      <div class="bg-surface-container-lowest px-5 py-4 grid grid-cols-4 text-sm hover:bg-surface-container-low transition-colors">
+        <span class="data-mono text-on-surface font-medium">${escHtml(type)}</span>
+        <span class="data-mono text-right text-on-surface">${s.count}</span>
+        <span class="data-mono text-right text-on-surface">${s.avg_ms}ms</span>
+        <span class="data-mono text-right text-sage">${(s.tokens||0).toLocaleString()}</span>
+      </div>`).join(''));
+  }
+
+  // ── Endpoint latency ──
+  const byEp=req.by_endpoint||{};
+  if(!Object.keys(byEp).length){
+    setHtml('mon-endpoint-rows','<div class="bg-surface-container-lowest px-5 py-5 text-xs text-secondary font-mono italic">No requests recorded in this window yet.</div>');
+  } else {
+    setHtml('mon-endpoint-rows', Object.entries(byEp).sort((a,b)=>b[1].count-a[1].count).map(([path,s])=>`
+      <div class="bg-surface-container-lowest px-5 py-4 grid grid-cols-5 text-sm hover:bg-surface-container-low transition-colors">
+        <span class="data-mono text-on-surface col-span-2 truncate">${escHtml(path)}</span>
+        <span class="data-mono text-right text-on-surface">${s.count}</span>
+        <span class="data-mono text-right text-on-surface">${s.avg_ms}ms</span>
+        <span class="data-mono text-right ${s.p95_ms>2000?'text-error':s.p95_ms>1000?'text-[#C9A84C]':'text-sage'}">${s.p95_ms}ms</span>
+      </div>`).join(''));
+  }
+
+  // ── Quality by document ──
+  const byDoc=ragas.by_document||{};
+  if(!Object.keys(byDoc).length){
+    setHtml('mon-doc-quality','<p class="text-xs text-secondary font-mono italic">No evaluations yet — ask questions to generate RAGAS scores.</p>');
+  } else {
+    setHtml('mon-doc-quality', Object.entries(byDoc).map(([doc,q])=>`
+      <div class="bg-surface-container-low rounded-xl p-1">
+        <div class="bg-surface-container-lowest px-5 py-4 flex items-center justify-between border-b border-outline-variant/10">
+          <span class="data-mono text-sm text-primary font-medium">${escHtml(doc)}</span>
+          <span class="data-mono text-xs text-secondary">${q.eval_count} evaluations</span>
+        </div>
+        <div class="grid grid-cols-2 gap-px">
+          ${[['Faithfulness',q.faithfulness]].map(([l,v])=>`
+            <div class="bg-surface-container-lowest p-5">
+              <p class="text-xs font-mono text-secondary uppercase tracking-widest mb-2">${l}</p>
+              <p class="data-mono text-2xl ${v==null?'text-outline':'text-sage'} font-medium mb-2">${fmtScore(v)}</p>
+              <div class="ragas-bar-bg"><div class="ragas-bar-fill ${barClass(v)}" style="width:${v!=null?Math.round(v*100):0}%"></div></div>
+            </div>`).join('')}
+        </div>
+      </div>`).join(''));
+  }
+
+  // ── Errors — always visible in panel, never a toast ──
+  const errList=document.getElementById('mon-errors-list');
+  const errCount=document.getElementById('mon-error-count');
+  if(errCount) errCount.textContent=errs.total ? errs.total+' total' : '';
+  if(!errList) return;
+  if(!errs.recent||!errs.recent.length){
+    errList.innerHTML='<div class="bg-surface-container-low rounded-lg px-5 py-4 text-xs text-secondary font-mono italic">No errors recorded in the last 24 hours.</div>';
+  } else {
+    errList.innerHTML=errs.recent.slice().reverse().map(ev=>`
+      <div class="border-l-4 border-error bg-error/[0.04] rounded-r-lg px-5 py-4">
+        <div class="flex items-center gap-3 mb-1">
+          <span class="data-mono text-sm font-semibold text-error">${escHtml(ev.error_type||ev.source||'error')}</span>
+          <span class="data-mono text-xs text-secondary">${new Date(ev.ts*1000).toLocaleString()}</span>
+          ${ev.doc_name?`<span class="data-mono text-xs px-2 py-0.5 bg-surface-container-high rounded text-on-surface-variant">${escHtml(ev.doc_name)}</span>`:''}
+        </div>
+        <p class="text-sm text-on-surface-variant leading-relaxed">${escHtml(ev.message)}</p>
+      </div>`).join('');
+  }
+}
+
+// ── Modal close on Escape ─────────────────────────────────────────────────────
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') document.getElementById('feedbackModal').style.display='none'; });
+
+// ── Auto-refresh monitoring every 30s ────────────────────────────────────────
+setInterval(()=>{ if(document.getElementById('main-monitoring').classList.contains('active')) loadMonitoring(); },30000);
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+loadDocs();
+</script>
+</body>
+</html>

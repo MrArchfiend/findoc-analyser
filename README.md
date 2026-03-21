@@ -96,7 +96,7 @@ streamlit run app.py
 ## Demonstrations
 
 **streamlit_v1.0**
-![streamlit_v1.0](./demo/streamlit_v1.0.png)
+![streamlit_v1.0](demo/streamlit_v1.0.png)
 
 ## Contributors
 

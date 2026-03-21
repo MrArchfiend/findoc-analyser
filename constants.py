@@ -1,12 +1,22 @@
 import os
 
 # Groq config
-GROQ_API_KEY = "your_key_here"
+GROQ_API_KEY = "api-key-here"
 GROQ_MODEL = "llama-3.3-70b-versatile"
 
 # ChromaDB
 CHROMADB_DIR = 'chromadb'
+CHROMA_PERSIST_DIR = 'chromadb'
+CHROMA_COLLECTION_NAME = 'findoc'
 
 # Embeddings
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 EMBEDDING_DIMENSIONS = 384
+EMBEDDING_BACKEND = "sentence-transformers"
+SENTENCE_TRANSFORMER_MODEL = "all-MiniLM-L6-v2"
+OLLAMA_EMBED_MODEL = "nomic-embed-text"
+OLLAMA_BASE_URL = "http://localhost:11434"
+
+# Retrieval
+TOP_K_RESULTS = 5
+TOP_K_TO_LLM = 5

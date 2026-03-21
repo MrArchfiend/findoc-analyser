@@ -1,6 +1,9 @@
+import csv
+import io
 import json
+import re
 import streamlit as st
-from qna import index_document, ask, get_metadata, get_chunks, compare_documents, store
+from qna import index_document, ask, get_metadata, get_chunks, store
 
 st.set_page_config(page_title="FinDoc Analyser v2", page_icon="📊", layout="wide")
 
@@ -131,6 +134,7 @@ st.markdown("""
     .tag { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 4px; font-size: 0.72rem; font-weight: 600; margin-right: 0.3rem; }
     .tag-10k  { background: #1a3a2a; color: #3fb950; }
     .tag-10q  { background: #1a2a3a; color: #58a6ff; }
+    .tag-docx { background: #2a1a3a; color: #bc8cff; }
     .tag-other { background: #2a2a1a; color: #d29922; }
 </style>
 """, unsafe_allow_html=True)
@@ -149,7 +153,7 @@ with st.sidebar:
     st.caption("SEC filing analysis & comparison")
     st.divider()
 
-    uploaded_file = st.file_uploader("Upload a 10-K / 10-Q PDF", type=["pdf"])
+    uploaded_file = st.file_uploader("Upload a 10-K / 10-Q PDF or DOCX", type=["pdf", "docx"])
     if uploaded_file:
         if st.button("Index Document", use_container_width=True, type="primary"):
             with st.spinner("Indexing & extracting metadata…"):
@@ -194,8 +198,8 @@ with st.sidebar:
         st.rerun()
 
 # ── main ───────────────────────────────────────────────────────────────────────
-tab_chat, tab_docs, tab_chunks, tab_compare = st.tabs(
-    ["💬 Chat", "📁 Documents", "🔍 Chunk Viewer", "⚖️ Comparison"]
+tab_chat, tab_docs, tab_chunks = st.tabs(
+    ["💬 Chat", "📁 Documents", "🔍 Chunk Viewer"]
 )
 
 # ─── TAB 1: CHAT ──────────────────────────────────────────────────────────────
@@ -263,7 +267,7 @@ with tab_docs:
     all_meta = store.list_metadata()
 
     if not docs:
-        st.info("No documents indexed yet. Upload a PDF from the sidebar.")
+        st.info("No documents indexed yet. Upload a PDF or DOCX from the sidebar.")
     else:
         for doc in docs:
             meta = all_meta.get(doc, {})
@@ -274,13 +278,27 @@ with tab_docs:
             financials = meta.get("financials") or {}
             chunk_count = meta.get("chunk_count", "?")
 
-            tag_cls = "tag-10k" if "10-K" in doc_type else ("tag-10q" if "10-Q" in doc_type else "tag-other")
+            # Tag colour: 10-K green, 10-Q blue, DOCX purple, other yellow
+            if "10-K" in doc_type:
+                tag_cls = "tag-10k"
+            elif "10-Q" in doc_type:
+                tag_cls = "tag-10q"
+            elif doc.lower().endswith(".docx"):
+                tag_cls = "tag-docx"
+            else:
+                tag_cls = "tag-other"
 
+            # File-type badge shown alongside doc_type
+            ext = "DOCX" if doc.lower().endswith(".docx") else "PDF"
+            ext_cls = "tag-docx" if ext == "DOCX" else "tag-other"
+
+            year_tag = f'<span class="tag tag-other">{year}</span>' if year else ""
             st.markdown(
                 f'<div class="fin-card">'
                 f'<h4>{company}'
                 f'  <span class="tag {tag_cls}">{doc_type or "DOC"}</span>'
-                f'  {"<span class=\\"tag tag-other\\">" + year + "</span>" if year else ""}'
+                f'  <span class="tag {ext_cls}">{ext}</span>'
+                f'  {year_tag}'
                 f'</h4>'
                 f'<p style="color:#8b949e;font-size:0.75rem;margin-bottom:0.5rem">'
                 f'📄 {doc} &nbsp;·&nbsp; {chunk_count} chunks</p>'
@@ -300,14 +318,38 @@ with tab_docs:
                 kv_html += '</div>'
                 st.markdown(kv_html, unsafe_allow_html=True)
 
-            col_dl, _ = st.columns([1, 5])
-            with col_dl:
+            # Build CSV bytes from flat metadata + financials
+            def _build_csv(m: dict) -> bytes:
+                buf = io.StringIO()
+                writer = csv.writer(buf)
+                writer.writerow(["field", "value"])
+                for k, v in m.items():
+                    if k == "financials":
+                        for fk, fv in (v or {}).items():
+                            writer.writerow([f"financials.{fk}", fv or ""])
+                    else:
+                        writer.writerow([k, v or ""])
+                return buf.getvalue().encode()
+
+            base_name = re.sub(r"\.(pdf|docx)$", "", doc, flags=re.IGNORECASE)
+            col_json, col_csv, _ = st.columns([1, 1, 4])
+            with col_json:
                 st.download_button(
-                    label="⬇ Download JSON",
+                    label="⬇ JSON",
                     data=json.dumps(meta, indent=2),
-                    file_name=f"{doc.replace('.pdf', '')}_metadata.json",
+                    file_name=f"{base_name}_metadata.json",
                     mime="application/json",
-                    key=f"dl_{doc}",
+                    key=f"dl_json_{doc}",
+                    use_container_width=True,
+                )
+            with col_csv:
+                st.download_button(
+                    label="⬇ CSV",
+                    data=_build_csv(meta),
+                    file_name=f"{base_name}_metadata.csv",
+                    mime="text/csv",
+                    key=f"dl_csv_{doc}",
+                    use_container_width=True,
                 )
             st.markdown("<hr style='border-color:#21262d;margin:1.5rem 0'>", unsafe_allow_html=True)
 
@@ -345,71 +387,3 @@ with tab_chunks:
                         unsafe_allow_html=True,
                     )
                     st.text(c.text)
-
-
-# ─── TAB 4: COMPARISON ────────────────────────────────────────────────────────
-with tab_compare:
-    docs = store.list_documents()
-    if len(docs) < 2:
-        st.info("Index at least 2 documents to use comparison.")
-    else:
-        all_meta = store.list_metadata()
-        doc_labels = {d: (all_meta.get(d, {}).get("company_name") or d) for d in docs}
-
-        selected_docs = st.multiselect(
-            "Select documents to compare (2 or more)",
-            options=docs,
-            format_func=lambda d: f"{doc_labels[d]}  ({d})",
-            default=docs[:2],
-        )
-
-        comp_query = st.text_input("Comparison question", placeholder="e.g. What are the main risk factors?")
-
-        if st.button("Run Comparison", type="primary", disabled=len(selected_docs) < 2 or not comp_query):
-            with st.spinner("Running comparison across documents…"):
-                results = compare_documents(comp_query, selected_docs)
-
-            cols = st.columns(len(selected_docs))
-            for col, doc in zip(cols, selected_docs):
-                label = doc_labels[doc]
-                answer, scored_chunks = results[doc]
-                with col:
-                    st.markdown(f'<div class="comp-col-header">{label}</div>', unsafe_allow_html=True)
-                    st.markdown(f'<div class="comp-answer">{answer}</div>', unsafe_allow_html=True)
-                    if scored_chunks:
-                        with st.expander(f"Chunks ({len(scored_chunks)})", expanded=False):
-                            for c in scored_chunks:
-                                pct = int(c["score"] * 100)
-                                st.markdown(
-                                    f'<div class="chunk-used">'
-                                    f'<div class="ch-meta">#{c["chunk_index"]} · {c.get("section_hint") or "—"} · {c["score"]:.4f}</div>'
-                                    f'<div class="score-bar-wrap"><div class="score-bar-bg"><div class="score-bar-fill" style="width:{pct}%"></div></div>'
-                                    f'<span class="score-label">{pct}%</span></div>'
-                                    f'{c["text"][:200]}…</div>',
-                                    unsafe_allow_html=True,
-                                )
-
-        # Side-by-side financial metrics comparison
-        if len(selected_docs) >= 2:
-            st.markdown("---")
-            st.markdown("#### Financial Metrics Comparison")
-            fin_keys = [
-                "revenue", "net_income", "eps_diluted", "gross_margin", "operating_margin",
-                "net_margin", "total_assets", "total_liabilities", "shareholders_equity",
-                "debt_to_equity", "current_ratio", "return_on_equity", "free_cash_flow",
-            ]
-            header_cols = st.columns([2] + [2] * len(selected_docs))
-            header_cols[0].markdown("**Metric**")
-            for i, doc in enumerate(selected_docs):
-                header_cols[i + 1].markdown(f"**{doc_labels[doc]}**")
-
-            for key in fin_keys:
-                row_cols = st.columns([2] + [2] * len(selected_docs))
-                row_cols[0].markdown(f"<span style='color:#8b949e;font-size:0.85rem'>{key.replace('_', ' ').title()}</span>", unsafe_allow_html=True)
-                for i, doc in enumerate(selected_docs):
-                    meta = all_meta.get(doc, {})
-                    val = (meta.get("financials") or {}).get(key)
-                    row_cols[i + 1].markdown(
-                        f"<span style='font-family:DM Mono,monospace;font-size:0.9rem;color:{'#3fb950' if val else '#484f58'}'>{val or '—'}</span>",
-                        unsafe_allow_html=True,
-                    )
