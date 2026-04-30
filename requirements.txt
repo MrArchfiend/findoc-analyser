@@ -9,8 +9,8 @@ nltk>=3.8.0                  # Sentence tokenisation for chunking
 python-docx>=0.8.11          # DOCX text extraction
 
 # ── OCR fallback (optional — only needed for scanned/image-based PDFs) ────────
-pdf2image>=1.16.0            # Converts PDF pages to images for OCR
-pytesseract>=0.3.10          # Tesseract OCR wrapper
+# pdf2image>=1.16.0            # Converts PDF pages to images for OCR
+# pytesseract>=0.3.10          # Tesseract OCR wrapper
 # Note: Tesseract binary must also be installed separately:
 #   Ubuntu/Debian: sudo apt install tesseract-ocr
 #   macOS:         brew install tesseract
